@@ -1,5 +1,8 @@
 %% CWA Tester
 
+% Authors: Fabian Chacon and Mirko Gamba,
+% edited and refactored by Timothy J. Welch
+
 clc; clear; close all;
 
 %% Set Directories and Select Data
