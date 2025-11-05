@@ -1,6 +1,9 @@
 function [plot1,plot2,plot3,plot4,ftpsave,PSD,PSTA] = CWA_Annotated(XTStruct, XTStruct_full, run, phi, Dm, Tair, times, dat)
 % CWA - Streamlined and commented
 
+% Authors: Fabian Chacon and Mirko Gamba,
+% edited and refactored by Timothy J. Welch
+
 % Inputs:
 %   XTStruct        - struct for short XT reader (used by XTReader_mod)
 %   XTStruct_full   - full XT reader struct (for time-resolved analysis)
