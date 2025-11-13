@@ -6,9 +6,21 @@ function [plot1,plot2,plot3,plot4,ftpsave,PSD,PSTA] = CWA_Annotated(XTStruct, XT
 
 % Inputs:
 %   XTStruct        - struct for short XT reader (used by XTReader_mod)
+%                    This has three fields:
+%                   XTdata  NBxNFR double-precision floats, input data,
+%                         NFR frames (e.g., 5000),
+%                         each frame is NFR (e.g., 101) points around the ring
+%                   FPS  frames per second
+%                   T0    1xNFR or 1x1, the initial time
+%                            (if bigger than 1x1, all values the same)
 %   XTStruct_full   - full XT reader struct (for time-resolved analysis)
+%                    Similar to XTStruct, but may have much larger NFR
+%                   Note: XTStruct is used for phase-shift analysis,
+%                         XTStruct_full is used for the time analysis
 %   run             - run number (scalar)
+%                      This is a label for plots, doesn't affect the computation
 %   phi             - equivalence ratio (or lookup x-value)
+%                      FIXME
 %   Dm              - diameter in inches (used with conversion to meters)
 %   Tair, times     - (kept for compatibility; times used to limit spectra window)
 %   dat             - matrix used to lookup Ucj (first and ninth columns expected)
