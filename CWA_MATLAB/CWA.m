@@ -16,8 +16,6 @@ function [plot1,plot2,plot3,plot4,ftpsave,PSD,PSTA] = CWA(XTStruct, XTStruct_ful
 %                     Similar to XTStruct, but may have much larger Nfr
 %                     Note: XTStruct is used for phase-shift analysis,
 %                           XTStruct_full is used for the time analysis
-%   run             - run number (scalar)
-%                     This is a label for plots, doesn't affect the computation
 %   phi             - equivalence ratio (fuel/air ratio), used for interpolation
 %   Dm              - RDC mean diameter [in] (converted to [m])
 %   times           - steady operating time window for run [s]
