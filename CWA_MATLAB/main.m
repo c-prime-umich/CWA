@@ -6,9 +6,9 @@
 clc; clear; close all;
 
 %% Set Directories and Select Data
-XTdir = '/Users/tjwelch/Desktop/APCL/Formal Verification/CWA/XT Diagrams';
-Savedir = '/Users/tjwelch/Desktop/APCL/Formal Verification/CWA/CWA Results';
-Imgdir = '/Users/tjwelch/Desktop/APCL/Formal Verification/CWA/CWA Figures';
+XTdir = '/Users/tjwelch/Desktop/APCL/Research_Projects/Formal Verification/CWA_Local/XT Diagrams';
+Savedir = '/Users/tjwelch/Desktop/APCL/Research_Projects/Formal Verification/CWA_Local/CWA Results';
+Imgdir = '/Users/tjwelch/Desktop/APCL/Research_Projects/Formal Verification/CWA_Local/CWA Figures';
 
 dat = readmatrix("H2AirDetProp.xlsx");
 
@@ -27,7 +27,7 @@ phi = 1.46;          %run equivalence ratio
 
 Dm = 5.76;          %RDC mean diameter [in]
 Tair = 300;         %air temperature at inlet [K]
-times = [6.8, 6.9]; %run steady opeating time [s]
+times = [6.8, 6.9]; %run steady operating time [s]
 
 
 %% Read XT Diagram
@@ -39,9 +39,9 @@ XTStruct = load(XTfile);
 XTStruct_full = load(XTfile_full);
 
 %% Run CWA
-[plot1,plot2,plot3,plot4,ftpsave,PSD,PSTA] = CWA_Annotated(XTStruct,XTStruct_full,run,phi,Dm,Tair,times,dat);
+[plot1,plot2,plot3,plot4,ftpsave,PSD,PSTA] = CWA(XTStruct,XTStruct_full,phi,Dm,times,dat);
 
-%% Plot 1
+%% Plot 1 - 2D Fourier Transform
 % Load variables
 fs = plot1.fs;
 ft = plot1.ft;
@@ -50,7 +50,7 @@ lim2 = plot1.lim2;
 
 % Plot
 figure
-imagesc(fs, ft, Plight)
+imagesc(fs, ft, Plight) % frequency vs. spatial modes
 set(gca, 'Ydir', 'Normal')
 titl = title(['Run ', num]);
 xlab = xlabel('$n_s$');
@@ -60,7 +60,11 @@ caxis([lim2-10 lim2])
 colormap jet
 fplot( [], xlab, ylab, titl, gca, 20 )
 
-%% Plot 2
+%% Plot 2 - Galilean-Shifted Fourier Spectrum (GSFS)
+% 1D temporal Fourier transform that a point
+% observer would compute in a frame of reference which
+% is moving at a velocity v relative to the lab reference frame.
+
 % Load variables
 f_fD = plot2.f_fD;
 a_Ucj = plot2.a_Ucj;
@@ -68,7 +72,7 @@ ftp = plot2.ftp;
 
 % Plot
 figure
-imagesc( f_fD, a_Ucj, log(ftp))
+imagesc( f_fD, a_Ucj, log(ftp)) % 
 set(gca, 'Ydir', 'Normal')
 titl = title(['Run ', num]);
 xlab = xlabel('$f/f_{CJ}$');
@@ -78,7 +82,7 @@ colormap jet
 caxis([max(max(log(ftp)))-5 max(max(log(ftp)))])
 fplot( [], xlab, ylab, titl, gca, 20 )
 
-%% Plot 3
+%% Plot 3 - Radon Curves
 % Load variables
 a = plot3.a;
 lights = plot3.lights_psa;
@@ -99,7 +103,9 @@ leg = legend('$n$ = 1','$n$ = 2','$n$ = 3','$n$ = 4');
 axis([-2.5 2.5 0 1.1])
 fplot( leg, xlab, ylab, titl, gca, 24 )
 
-%% Plot 4
+%% Plot 4 - Strengths of waves over time
+% color map tracking the wave strengths over the time window
+
 % Load variables
 cmap1 = jet(100);
 intens = plot4.intens;
