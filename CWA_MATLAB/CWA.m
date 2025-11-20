@@ -73,7 +73,7 @@ PSTA    = struct('ttp', [], 'vdets', [], 'detins', [], 'vcdets', [], ...
 
 
 %% ----- Basic derived parameters and checks -----
-% Interpolate Ucj from provided dat (CodeGen-safe: dat must be regular numeric)
+% Interpolate Ucj from provided dat
 Ucj = interp1(dat(:,1), dat(:,9), phi); % [m/s]
 
 % Convert diameter to meters for frequency normalization
@@ -124,7 +124,7 @@ end
 lights_short = lights_short - mean(mean(lights_short));
 
 %% ----- Phase shift sweep (single-block) -----
-% 'a' is phase shift scan parameter (units of velocity*magnitude)
+% 'a' is phase shift scan parameter (units of velocity*magnitude?)
 a = -4000:20:4000;
 Npic = min([5000 Nshort]);
 if mod(Npic,2) == 0
