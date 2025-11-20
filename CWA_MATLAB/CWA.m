@@ -41,7 +41,7 @@ function [plot1,plot2,plot3,plot4,ftpsave,PSD,PSTA] = CWA(XTStruct, XTStruct_ful
 %                                         (velocity normalized by detonation speed)
 %                       lights_psa : waveLx401 double, Radon transform
 %                           waveL = 6 (number of waves examined)
-%   plot4           - struct for plotting wave strengths
+%   plot4           - struct for plotting wave velocity evolution over time
 %                     11 fields
 %                       intens : 1x(3*Ntp) double, intensities of all tracked waves
 %                       detins : 1xNtp double, detonation-wave intensities
