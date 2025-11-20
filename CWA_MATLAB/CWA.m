@@ -54,9 +54,9 @@ function [plot1,plot2,plot3,plot4,ftpsave,PSD,PSTA] = CWA(XTStruct, XTStruct_ful
 %                       cvdets : 1xNtp double, convected detonation speed
 %                       vcrwps : 1xNtp double, co-rotating wave speed
 %                       Ntp : 1x1 double, floor(Nfr_full/71)
-%   ftpsave         - plot2 data for saving
-%   PSD             - Phase-Shifted Analysis data for saving
-%   PSTA            - Struct of Phase-Shifted Time Analysis data for saving
+%   ftpsave         - plot2 data for saving (keep from original)
+%   PSD             - Phase-Shifted Analysis data for saving (keep from original)
+%   PSTA            - Struct of Phase-Shifted Time Analysis data for saving (keep from original)
 
 %% --- Pre-initialize all outputs ---
 plot1 = struct('fs', [], 'ft', [], 'Plight', [], 'lim2', []);
