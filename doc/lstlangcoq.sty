@@ -1,0 +1,31 @@
+\lstdefinelanguage{Coq}{
+   mathescape=true,
+   morekeywords=[16]{Fixpoint,%
+      Definition,Lemma,Theorem,Axiom, Variable, Variables, Let, Hypothesis, Notation},% 
+    % Gallina
+    morekeywords=[2]{forall, exists, exists2, fun, fix, cofix, struct,
+        match, with, end, as, in, return, let, if, then, else, for, of},
+    morekeywords=[3]{Type, Prop, Set, true, false, option},
+    sensitive, %
+    keepspaces=true,
+    showstringspaces=false,
+    breaklines=true,breakatwhitespace=true,
+    basicstyle=\ttfamily\small,
+    keywordstyle=[16]{\ttfamily},
+    % Style for gallina keyword
+    keywordstyle=[16]{\ttfamily},
+    keywordstyle=[2]{\ttfamily},
+    keywordstyle=[3]{\ttfamily},
+   literate={=>}{{$\Rightarrow$\ }}1 {>->}{{$\rightarrowtail$}}2{->}{{$\to$\ }}1
+   {<->}{$\leftrightarrow$}1
+   {forall}{$\forall\,$}1
+   {forallb}{forallb}7
+   {exists}{$\exists\,$}1
+   {existsb}{existsb}7
+   {existsv}{existsv}7
+   {\/\\}{{$\wedge$\ }}1
+   {|-}{{$\vdash$\ }}1
+   {-*}{{$\wand$\ }}1
+   {\\\/}{{$\vee$\ }}1
+   {~}{{$\sim$}}1
+  }[keywords,comments,strings]%

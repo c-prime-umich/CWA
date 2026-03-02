@@ -1,0 +1,185 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{listings}
+\usepackage{lstlangcoq}
+\usepackage{matlab}
+\lstset{mathescape=true,language=Coq}
+
+
+\begin{document}
+\title{Connecting to Cl\'ement \& Martin}
+\author{Timothy Welch and Andrew W. Appel}
+
+
+\maketitle
+
+\section{Introduction}
+
+A \emph{rotating detonation engine} burns fuel (and oxidizer) in an
+annular channel, that is, in the narrow space between two concentric
+cylinders.  Detonation waves travel clockwise or counterclockwise
+around the annulus, burning fuel faster (and therefore generating more
+thrust) than if detonation was not occurring.
+
+But are the detonation waves stable and long-lived?  With what speed
+and direction do they travel?  Is there just one wave or several
+simultaneously?  What is the shape of the wave?  How much combustion
+that occurs is unrelated to the detonation waves?  To answer these
+questions, Chacon, Feleo, and Gamba \cite{chacon21} aimed a camera at
+the back of the engine, imaging the brightness of chemiluminescence at
+101 equally spaced points around the cylinder, every 18 microseconds,
+for durations of 1.5 seconds (thus, about 82,000 images).  Under the
+hypothesis that in any 20ms timeframe there are just a few detonation
+waves present, they used Fourier analysis to estimate the amplitude
+and angular velocity of the detonation waves.  This analysis is called
+\emph{circuit wave analysis} (CWA).  Chacon \emph{et al.}'s CWA
+deduces important properties of the circuit waves, but does not
+guarantee that the waves it identifies account for all the activity in
+the combustion annulus, nor does it track gradual changes in velocity
+of the waves, nor their shape.
+
+Based on Chacon \emph{et al.}'s CWA, we have designed and implemented
+a \emph{Verified CWA} (VCWA), that produces a description $D$ of the
+wave activity seen by the imaging device along with an accuracy
+tolerance $\tau$.  It makes this formally verifiable\footnote{soon to
+be formally verified} guarantee: VCWA's description of the waves
+accounts for, within the accuracy tolerance, \emph{all} the
+brightness variation seen by the imager.  In any one run of VCWA, the
+accuracy tolerance may be small (indicating that it found a fairly
+complete description of the activity) or large (indicating either that
+the brightness variations could not be described by just a few waves
+or that it could not identify those waves).
+
+Either way, VCWA makes a verifiable claim: if you synthesize the
+waveforms described by $D$ and subtract the original image sequence,
+the 1-norm of the result will be $\le \tau$.  To verify this claim, run
+a simple program that performs this synthesis and subtraction.
+
+That is, we have a \emph{proposer,} that uses Fourier analysis and
+optimization algorithms to produce a \emph{hypothesis} $(D,\tau)$, and
+a \emph{verifier}.  The proposer is implemented in MATLAB.  The
+verifier program is much simpler than the proposer---since all it does
+is synthesize and sum some waveforms---and we have implementations in
+MATLAB and in C.
+
+One can even apply \emph{formal verification} to VCWA.  Formal
+verification, in this context, is a \emph{proof} in mathematical logic
+that a program satisfies its mathematical specification.  Since any
+such proof must be with respect to the minute details of the
+programming language's formal semantics, there are far too many
+details in such proofs to reliably perform or check such proofs by
+hand.  Therefore, formal program verification usually uses software
+\emph{proof checkers} to check that every step of such proofs is
+valid, and \emph{proof assistants} and/or \emph{automated theorem
+provers} to automate many steps of the proof.
+
+We formally verify the verifier, not the proposer.  We believe the proposer is correct, but it need not
+be \emph{proved} correct, since any hypothesis it proposes can be independently checked by the verifier.
+
+\section{Specification}
+\newcommand\Nfr{\ensuremath{{N_\mathrm{fr}}}}
+\newcommand\Nb{\ensuremath{{N_\mathrm{b}}}}
+\newcommand\Xbg{\ensuremath{{X_\mathrm{bg}}}}
+\newcommand\Xsyn{\ensuremath{{X_\mathrm{syn}}}}
+\newcommand\Nt{\ensuremath{{N^\mathrm{(t)}}}}
+\newcommand\phase{\ensuremath{\phi}}
+The \emph{input data} is a time series $X: \mathbb{R}^\Nfr \times \mathbb{R}^\Nb$
+of $\Nfr$ \emph{frames} each containing $\Nb$ \emph{brightness} values.
+Typically $\Nfr$ might be approximately $10^5$ and (in the experimental apparatus used) $\Nb=101$.  The brightness
+values are understood as equally spaced around the circumference of a circle, so that
+points $i$ and \mbox{$(i+1) \mod \Nb$} are adjacent in (angular) space, and $X(t,i)$
+represents the brightness at time $t$, angle $\theta(i) = 2\pi i / \Nb$.  Between each time $t$ and $t+1$ there is
+some real time interval, some number of microseconds, but it is not necessary to know that value in
+forming or checking hypotheses.
+
+\paragraph{Hypothesis, first attempt.}
+One might hypothesize that brightness $X(t,i)$ is the sum of $W$ waves,
+where the $w$th wave $(0\le w <W)$ is described by a velocity $v_w$, amplitude $A_w$, phase $\phase_w$
+and width $\sigma_w$.  Therefore we synthesize
+\[
+X_\mathrm{syn}^\mathrm{naive}(t,i) = \sum_{w=0}^{W-1} A_w \mathrm{exp}(- \frac{(\phase_w + v_w t - \theta(i))^2}{2 \sigma_w^2}).
+\]
+However, we found this does not lead to an accurate estimation of $X$.  The waves do not have
+constant amplitude, nor constant velocity, nor constant width.  Instead, all three of these
+are slowly varying functions of time.\footnote{If these values were arbitrary chaotic functions of time,
+it would be inappropriate to speak of a ``wave.''  The limitation to slowly varying functions is
+intended to produce a hypothesis that has some scientific interpretability for the
+engineer designing and measuring the combustion chamber.}
+
+Furthermore, we found that there is a \emph{static background}.  That is, each of the $\Nb$ points around
+the ring is consistently brighter or dimmer, regardless of $t$.  This may be a calibration issue, or
+it may be that some parts of the ring are consistently hotter than others; either way, we can formulate
+a hypothesis with a static background $\Xbg: \mathbb{R}^\Nb$.
+
+\paragraph{Hypothesis, final form.}
+We explain $X(t,i)$ as the sum of $W$ waves plus a static background $\Xbg(i)$.
+The amplitude of the $w$th wave $(0\le w <W)$ is described by a time series $A_w : \mathbb{R}^{\Nt_w}$
+and its velocity is a time series $v_w : \mathbb{R}^{\Nt_w}$.
+That is, for each $k$ such that $0 \le k \le \Nt_w$,
+the wave's velocity at time $k \frac{\Nfr}{\Nt_w}$ is $v_w[k]$,
+its amplitude is $A_w[k]$, and its width is $\sigma_w[k]$.
+
+Of course, $k \frac{\Nfr}{\Nt_w}$ is not necessarily an integer value, so we interpolate.
+At present we are using linear interpolation.
+That is, for any $f: \mathbb{R}^{d}$,
+\[
+\hat{f}(d,t) = \frac{ f(a) (b - t\frac{d}{\Nfr})
+  + f(b) (t\frac{d}{\Nfr} - a )}
+    { b- a  }.
+\]
+where $a=\lfloor t\frac{d}{\Nfr}\rfloor$ and $b=\lfloor (1+t)\frac{d}{\Nfr} \rfloor$.
+
+%\[
+%\hat{f}(d,t) = \frac{ f(\lfloor t\frac{d}{\Nfr}\rfloor) (\lfloor (1+t)\frac{d}{\Nfr} \rfloor - t\frac{d}{\Nfr})
+%  + f(\lfloor (1+t)\frac{d}{\Nfr}\rfloor) (t\frac{d}{\Nfr} - \lfloor t\frac{d}{\Nfr} \rfloor)}
+%    { \lfloor (1+t)\frac{d}{\Nfr}\rfloor - \lfloor t\frac{d}{\Nfr} \rfloor }.
+%\]
+
+\vspace{\baselineskip}
+
+Thus we define
+\[
+\Xsyn(t,i) = \Xbg(i) + \sum_{w=0}^{W-1} \hat{A}_w(\Nt_w,t) \mathrm{exp}(- \frac{(\phase_w + \hat{v}_w(\Nt_w,t)\cdot t - \theta(i))^2}{2 (\hat{\sigma}_w(\Nt_w,t))^2}).
+\]
+
+Now we can calculate the accuracy of this hypothesis:
+
+\[
+\tau = || \Xsyn - X ||_1
+\]
+
+In conclusion:  To explain a dataset $(\Nfr,\Nb,X)$, a \emph{hypothesis} is a tuple $(D,\tau)$ where
+$D=(\Xbg,(\Nt_0,A_0,v_0,\sigma_0),\ldots (\Nt_{w-1},A_{w-1},v_{w-1},\sigma_{w_1}))$,
+each $A_w$, $v_w$, and $\sigma_w$ is in $\mathbb{R}^{\Nt_w}$,
+and where $||\Xsyn(D)-X ||_1 \le \tau $.
+
+\section{How to find a hypothesis}
+
+it ain't trivial.  Tim will explain \ldots
+
+\section{How to verify a hypothesis}
+
+We have this function in MATLAB:
+\begin{lstlisting}[language=matlab]
+  blah blah
+\end{lstlisting}
+
+and this one in C:
+\begin{lstlisting}[language=C]
+  blah blah
+\end{lstlisting}
+
+\section{Proving correctness of the verifier}
+
+not done yet 
+
+\bibliographystyle{plain}
+\bibliography{CWA}
+
+
+\end{document}
