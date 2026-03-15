@@ -4,7 +4,6 @@
 #include <math.h>
 
 #define MAX_WAVES 100
-#define MAX_LINE 10000
 #define L (2.0*M_PI)
 
 typedef struct {
@@ -18,9 +17,11 @@ typedef struct {
 
 typedef struct {
     double *XT;
-    double *XT_bg;
+    double *BG;
     int Nb;
     int Nfr;
+    int Nbg;
+    double dt;
     Wave waves[MAX_WAVES];
     int num_waves;
 } Data;
@@ -28,6 +29,7 @@ typedef struct {
 /* ======================== Utility Functions ======================== */
 
 double wrap(double x) {
+    // return fmod(fmod(x + L/2.0, L) + L, L) - L/2.0;
     return fmod(fmod(x + L/2.0, L) + L, L) - L/2.0;
 }
 
@@ -138,34 +140,46 @@ double* read_csv_vector(const char *filename, int *n)
 /* ======================== FUNCTION 1 ======================== */
 /* Load all data */
 
-Data* load_all_data() {
+Data* load_all_data(const char *dir) {
 
     Data *data = malloc(sizeof(Data));
 
     int rows, cols;
 
+    char path[512];
+
     /* Load XT */
-    data->XT = read_csv_flat("data/XT.csv", &rows, &cols);
+    snprintf(path, sizeof(path), "%s/XT.csv", dir);
+    data->XT = read_csv_flat(path, &rows, &cols);
     data->Nb = rows;
     data->Nfr = cols;
 
     /* Load background */
     int r2, c2;
-    data->XT_bg = read_csv_flat("data/XT_bg.csv", &r2, &c2);
+    snprintf(path, sizeof(path), "%s/BG.csv", dir);
+    data->BG = read_csv_flat(path, &r2, &c2);
+    data->Nbg = c2;
 
-    printf("XT size:     %d x %d = %d elements\n",
-       data->Nb, data->Nfr, data->Nb * data->Nfr);
+    /* Load dt */
+    int r_dt, c_dt;
+    snprintf(path, sizeof(path), "%s/dt.csv", dir);
 
-    printf("XT_bg size:  %d x %d = %d elements\n",
-        r2, c2, r2 * c2);
+    double *tmp = read_csv_flat(path, &r_dt, &c_dt);
+
+    if (r_dt * c_dt != 1) {
+        fprintf(stderr, "dt.csv must contain exactly one value\n");
+        exit(EXIT_FAILURE);
+    }
+
+    data->dt = tmp[0];
+    free(tmp);
 
     data->num_waves = 0;
 
     /* Load waves */
     for (int i = 1; i <= MAX_WAVES; i++) {
 
-        char path[256];
-        snprintf(path, sizeof(path), "data/wave_%d/A.csv", i);
+        snprintf(path, sizeof(path), "%s/wave_%d/A.csv", dir, i);
 
         FILE *fp = fopen(path, "r");
         if (!fp) break;
@@ -173,19 +187,23 @@ Data* load_all_data() {
 
         Wave *w = &data->waves[data->num_waves];
 
-        snprintf(path, sizeof(path), "data/wave_%d/A.csv", i);
+        snprintf(path, sizeof(path), "%s/wave_%d/A.csv", dir, i);
         w->A = read_csv_vector(path, &w->Nt);
 
-        snprintf(path, sizeof(path), "data/wave_%d/sigma.csv", i);
+        snprintf(path, sizeof(path), "%s/wave_%d/sigma.csv", dir, i);
         w->sigma = read_csv_vector(path, &w->Nt);
 
-        snprintf(path, sizeof(path), "data/wave_%d/v.csv", i);
+        snprintf(path, sizeof(path), "%s/wave_%d/v.csv", dir, i);
         w->v = read_csv_vector(path, &w->Nt);
 
-        snprintf(path, sizeof(path), "data/wave_%d/t.csv", i);
-        w->t = read_csv_vector(path, &w->Nt);
+        /* Create time vector */
+        w->t = malloc(w->Nt * sizeof(double));
+        double dt_dummy = (double)(data->Nfr - 1) / (double)(w->Nt - 1);
+        for (int k = 0; k < w->Nt; k++) {
+            w->t[k] = k * dt_dummy;
+        }
 
-        snprintf(path, sizeof(path), "data/wave_%d/theta0.csv", i);
+        snprintf(path, sizeof(path), "%s/wave_%d/theta0.csv", dir, i);
         int dummy;
         double *tmp = read_csv_vector(path, &dummy);
         w->theta0 = tmp[0];
@@ -204,9 +222,20 @@ double compute_epsilon(Data *data) {
 
     int Nb = data->Nb;
     int Nfr = data->Nfr;
+    int Nbg  = data->Nbg;
+
+    /* interpolate XT_bg from BG */
+    double *XT_bg = malloc(Nb * Nfr * sizeof(double));
+    double scale = (double)(Nbg - 1) / (Nfr - 1);
+    for (int k = 0; k < Nfr; k++) {
+        int j = (int)(k * scale);   // floor
+        for (int i = 0; i < Nb; i++) {
+            XT_bg[i + k*Nb] = data->BG[i + j*Nb];
+        }
+    }
 
     double *XT_syn = malloc(Nb * Nfr * sizeof(double));
-    memcpy(XT_syn, data->XT_bg, Nb * Nfr * sizeof(double));
+    memcpy(XT_syn, XT_bg, Nb * Nfr * sizeof(double));
 
     double dth = 2.0 * M_PI / Nb;
 
@@ -220,14 +249,8 @@ double compute_epsilon(Data *data) {
 
         Wave *wave = &data->waves[w];
 
-        double t_start = wave->t[0];
-        double t_end   = wave->t[wave->Nt - 1];
-
-        double *t_full = malloc(Nfr * sizeof(double));
-        for (int i = 0; i < Nfr; i++)
-            t_full[i] = t_start + (t_end - t_start) * i / (Nfr - 1);
-
-        double dt = t_full[1] - t_full[0];
+        /* Make time array */
+        double dt = 1;
 
         double theta0 = wave->theta0;
 
@@ -240,12 +263,11 @@ double compute_epsilon(Data *data) {
 
         /* Time loop */
         for (int it = 1; it < Nfr; it++) {
+            double A_it     = interp1(wave->t, wave->A, wave->Nt, (double)it);
+            double sigma_it = interp1(wave->t, wave->sigma, wave->Nt, (double)it);
+            double v_it     = interp1(wave->t, wave->v, wave->Nt, (double)(it-1));
 
-            double A_it     = interp1(wave->t, wave->A, wave->Nt, t_full[it]);
-            double sigma_it = interp1(wave->t, wave->sigma, wave->Nt, t_full[it]);
-            double v_it     = interp1(wave->t, wave->v, wave->Nt, t_full[it]);
-
-            theta0 += v_it * dt;
+            theta0 += v_it * data->dt;
             theta0 = mod_positive(theta0);
 
             for (int i = 0; i < Nb; i++) {
@@ -254,8 +276,6 @@ double compute_epsilon(Data *data) {
                     A_it * exp(-dx*dx / (2.0 * sigma_it * sigma_it));
             }
         }
-
-        free(t_full);
     }
 
     /* Compute epsilon */
@@ -277,9 +297,16 @@ double compute_epsilon(Data *data) {
 
 /* ======================== MAIN ======================== */
 
-int main() {
+int main(int argc, char *argv[]) {
 
-    Data *data = load_all_data();
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <data_directory>\n", argv[0]);
+        return 1;
+    }
+
+    const char *data_dir = argv[1];
+
+    Data *data = load_all_data(data_dir);
 
     double epsilon_print = compute_epsilon(data);
 
