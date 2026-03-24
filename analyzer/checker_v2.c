@@ -26,31 +26,6 @@ typedef struct {
     int num_waves;
 } Data;
 
-/* ======================== Utility Functions ======================== */
-
-double wrap(double x) {
-    // return fmod(fmod(x + L/2.0, L) + L, L) - L/2.0;
-    return fmod(fmod(x + L/2.0, L) + L, L) - L/2.0;
-}
-
-double mod_positive(double x) {
-    double r = fmod(x, L);
-    return (r < 0) ? r + L : r;
-}
-
-double interp1(double *x, double *y, int n, double xi) {
-    if (xi <= x[0]) return y[0];
-    if (xi >= x[n-1]) return y[n-1];
-
-    for (int i = 0; i < n-1; i++) {
-        if (xi >= x[i] && xi <= x[i+1]) {
-            double t = (xi - x[i]) / (x[i+1] - x[i]);
-            return y[i] + t * (y[i+1] - y[i]);
-        }
-    }
-    return 0.0;
-}
-
 /* ======================== CSV Readers ======================== */
 
 double* read_csv_flat(const char *filename, int *rows, int *cols)
@@ -186,15 +161,24 @@ Data* load_all_data(const char *dir) {
         fclose(fp);
 
         Wave *w = &data->waves[data->num_waves];
+	int Nt;
 
         snprintf(path, sizeof(path), "%s/wave_%d/A.csv", dir, i);
         w->A = read_csv_vector(path, &w->Nt);
 
         snprintf(path, sizeof(path), "%s/wave_%d/sigma.csv", dir, i);
-        w->sigma = read_csv_vector(path, &w->Nt);
+        w->sigma = read_csv_vector(path, &Nt);
+	if (Nt != w->Nt) {
+	  fprintf(stderr, "Wave %d, A vector has %d values but sigma vector has %d values\n",i,w->Nt,Nt);
+	  exit(EXIT_FAILURE);
+	}
 
         snprintf(path, sizeof(path), "%s/wave_%d/v.csv", dir, i);
         w->v = read_csv_vector(path, &w->Nt);
+	if (Nt != w->Nt) {
+	  fprintf(stderr, "Wave %d, A vector has %d values but v vector has %d values\n",i,w->Nt,Nt);
+	  exit(EXIT_FAILURE);
+	}
 
         /* Create time vector */
         w->t = malloc(w->Nt * sizeof(double));
@@ -216,79 +200,165 @@ Data* load_all_data(const char *dir) {
 }
 
 /* ======================== FUNCTION 2 ======================== */
-/* Compute epsilon */
+
+double wrap(double x) {
+    return fmod(fmod(x + L/2.0, L) + L, L) - L/2.0;
+}
+
+double mod_positive(double x) {
+    double r = fmod(x, L);
+    return (r < 0) ? r + L : r;
+}
+
+double interp1(double *x, double *y, int n, double xi) {
+    if (xi <= x[0]) return y[0];
+    if (xi >= x[n-1]) return y[n-1];
+
+    for (int i = 0; i < n-1; i++) {
+        if (xi >= x[i] && xi <= x[i+1]) {
+            double t = (xi - x[i]) / (x[i+1] - x[i]);
+            return y[i] + t * (y[i+1] - y[i]);
+        }
+    }
+    return 0.0;
+}
+
+void synthesize_orig(Data *data, double *XT_syn) {
+  int Nb = data->Nb;
+  int Nfr = data->Nfr;
+  int Nbg  = data->Nbg;
+
+  /* interpolate XT_bg from BG */
+  double *XT_bg = malloc(Nb * Nfr * sizeof(double));
+  double scale = (double)(Nbg - 1) / (Nfr - 1);
+  for (int k = 0; k < Nfr; k++) {
+    int j = (int)(k * scale);   // floor
+    for (int i = 0; i < Nb; i++) {
+      XT_bg[i + k*Nb] = data->BG[i + j*Nb];
+    }
+  }
+
+  memcpy(XT_syn, XT_bg, Nb * Nfr * sizeof(double));
+
+  double dth = 2.0 * M_PI / Nb;
+
+  /* theta grid */
+  double *theta = malloc(Nb * sizeof(double));
+  for (int i = 0; i < Nb; i++)
+    theta[i] = i * dth;
+
+  /* Loop over waves */
+  for (int w = 0; w < data->num_waves; w++) {
+
+    Wave *wave = &data->waves[w];
+
+    /* Make time array */
+    double dt = 1;
+
+    double theta0 = wave->theta0;
+
+    /* Initial frame */
+    for (int i = 0; i < Nb; i++) {
+      double dx = wrap(theta[i] - theta0);
+      XT_syn[i] += wave->A[0] *
+	exp(-dx*dx / (2.0 * wave->sigma[0] * wave->sigma[0]));
+    }
+
+    /* Time loop */
+    for (int it = 1; it < Nfr; it++) {
+      double A_it     = interp1(wave->t, wave->A, wave->Nt, (double)it);
+      double sigma_it = interp1(wave->t, wave->sigma, wave->Nt, (double)it);
+      double v_it     = interp1(wave->t, wave->v, wave->Nt, (double)(it-1));
+
+      theta0 += v_it * data->dt;
+      theta0 = mod_positive(theta0);
+
+      for (int i = 0; i < Nb; i++) {
+	double dx = wrap(theta[i] - theta0);
+	XT_syn[i + it*Nb] +=
+	  A_it * exp(-dx*dx / (2.0 * sigma_it * sigma_it));
+      }
+    }
+  }
+  free(theta);
+
+}
+
+double range2pi(double x) {
+  return x - L * floor (x / L);
+}
+
+double wrap_new(double x) {
+  return range2pi(x+L/2.0)-L/2.0;
+}
+
+double interpolate(double f, double *y, int n, double k) {
+    int j = floor(k/f);
+    return y[j] + ((k - j*f) / f) * (y[j+1] - y[j]);
+}
+
+void synthesize(Data *data, double *S) {
+  int Nw = data->num_waves;
+  int Nb = data->Nb;
+  int Nfr = data->Nfr;
+  int Nbg  = data->Nbg;
+  double dt = data->dt;
+  Wave *waves = data->waves;
+  double theta [ MAX_WAVES ];
+  int w,k,i;
+
+  for (k = 0; k < Nfr; k++) {
+    for (i = 0; i < Nb; i++) {
+      double a = data->BG[i + (int)(k*((double)(Nbg - 1)) / (Nfr - 1))*Nb];
+
+      for (w = 0; w < Nw; w++) {
+        int Nt = waves[w].Nt;
+        double f = (double)(Nfr - 1) / (double)(Nt - 1);
+        double A     = interpolate(f, waves[w].A, Nt, k);
+        double sigma = interpolate(f, waves[w].sigma, Nt, k);
+
+	if (k==0)
+	  theta[w] = waves[w].theta0;
+	else if (i==0) {
+	  double v = interpolate(f, waves[w].v, Nt, k-1);
+	  theta[w] = range2pi (theta[w] + v * dt);
+	}
+
+        double dx = wrap_new(i * (L / Nb) - theta[w]);   
+        a += A * exp(-dx*dx / (2.0 * sigma * sigma));
+      }
+      S[i + k*Nb] = a;
+    }
+  }
+}
 
 double compute_epsilon(Data *data) {
-
     int Nb = data->Nb;
     int Nfr = data->Nfr;
     int Nbg  = data->Nbg;
-
-    /* interpolate XT_bg from BG */
-    double *XT_bg = malloc(Nb * Nfr * sizeof(double));
-    double scale = (double)(Nbg - 1) / (Nfr - 1);
-    for (int k = 0; k < Nfr; k++) {
-        int j = (int)(k * scale);   // floor
-        for (int i = 0; i < Nb; i++) {
-            XT_bg[i + k*Nb] = data->BG[i + j*Nb];
-        }
-    }
-
+    double *XT_syn_orig = malloc(Nb * Nfr * sizeof(double));
     double *XT_syn = malloc(Nb * Nfr * sizeof(double));
-    memcpy(XT_syn, XT_bg, Nb * Nfr * sizeof(double));
 
-    double dth = 2.0 * M_PI / Nb;
+    synthesize_orig(data, XT_syn_orig);
+    synthesize(data, XT_syn);
 
-    /* theta grid */
-    double *theta = malloc(Nb * sizeof(double));
-    for (int i = 0; i < Nb; i++)
-        theta[i] = i * dth;
-
-    /* Loop over waves */
-    for (int w = 0; w < data->num_waves; w++) {
-
-        Wave *wave = &data->waves[w];
-
-        /* Make time array */
-        double dt = 1;
-
-        double theta0 = wave->theta0;
-
-        /* Initial frame */
-        for (int i = 0; i < Nb; i++) {
-            double dx = wrap(theta[i] - theta0);
-            XT_syn[i] += wave->A[0] *
-                exp(-dx*dx / (2.0 * wave->sigma[0] * wave->sigma[0]));
-        }
-
-        /* Time loop */
-        for (int it = 1; it < Nfr; it++) {
-            double A_it     = interp1(wave->t, wave->A, wave->Nt, (double)it);
-            double sigma_it = interp1(wave->t, wave->sigma, wave->Nt, (double)it);
-            double v_it     = interp1(wave->t, wave->v, wave->Nt, (double)(it-1));
-
-            theta0 += v_it * data->dt;
-            theta0 = mod_positive(theta0);
-
-            for (int i = 0; i < Nb; i++) {
-                double dx = wrap(theta[i] - theta0);
-                XT_syn[i + it*Nb] +=
-                    A_it * exp(-dx*dx / (2.0 * sigma_it * sigma_it));
-            }
-        }
+    /* Check that synthesize is the same as synthesize_orig */
+    double error = 0.0;
+    for (int i = 0; i < Nb*Nfr; i++) {
+      error += fabs (XT_syn[i] - XT_syn_orig[i]);
     }
+    printf ("algorithm error check: total %f,  average %g\n", error, error / (Nb*Nfr));
 
     /* Compute epsilon */
     double XT_energy = 0.0;
     double diff_sum = 0.0;
 
     for (int i = 0; i < Nb * Nfr; i++) {
-        XT_energy += fabs(data->XT[i]);
-        diff_sum  += fabs(XT_syn[i] - data->XT[i]);
+      diff_sum  += fabs(XT_syn[i] - data->XT[i]);
+      XT_energy += fabs(data->XT[i]);
     }
 
     free(XT_syn);
-    free(theta);
 
     double epsilon = diff_sum / XT_energy;
 
@@ -310,7 +380,8 @@ int main(int argc, char *argv[]) {
 
     double epsilon_print = compute_epsilon(data);
 
-    printf("residual energy fraction = %.3e\n", epsilon_print);
+    printf("residual energy fraction = %.3e   (%4.1f%% of energy accounted for)\n",
+	      epsilon_print, 100*(1-epsilon_print));
 
     return 0;
 }

@@ -12,7 +12,7 @@
 
 
 \begin{document}
-\title{Connecting to Cl\'ement \& Martin}
+\title{Verifiable Circuit Wave Analysis}
 \author{Timothy Welch and Andrew W. Appel}
 
 
@@ -37,11 +37,15 @@ for durations of 1.5 seconds (thus, about 82,000 images).  Under the
 hypothesis that in any 20ms timeframe there are just a few detonation
 waves present, they used Fourier analysis to estimate the amplitude
 and angular velocity of the detonation waves.  This analysis is called
-\emph{circuit wave analysis} (CWA).  Chacon \emph{et al.}'s CWA
-deduces important properties of the circuit waves, but does not
+\emph{circuit wave analysis} (CWA).  CWA takes into account that
+the wave velocity may change (somewhat) over the timeframe, which allows
+it to get significantly better results than a simple Fourier analysis
+that would assume a constant velocity.
+However, although Chacon \emph{et al.}'s CWA
+deduces important properties of the circuit waves, it does not
 guarantee that the waves it identifies account for all the activity in
-the combustion annulus, nor does it track gradual changes in velocity
-of the waves, nor their shape.
+the combustion annulus, nor does it \emph{describe} the gradual changes in velocity
+of the waves, nor does it describe the shape of the waveform.
 
 Based on Chacon \emph{et al.}'s CWA, we have designed and implemented
 a \emph{Verified CWA} (VCWA), that produces a description $D$ of the
@@ -60,10 +64,10 @@ waveforms described by $D$ and subtract the original image sequence,
 the 1-norm of the result will be $\le \tau$.  To verify this claim, run
 a simple program that performs this synthesis and subtraction.
 
-That is, we have a \emph{proposer,} that uses Fourier analysis and
+That is, we have an \emph{analyzer,} that uses Fourier analysis and
 optimization algorithms to produce a \emph{hypothesis} $(D,\tau)$, and
-a \emph{verifier}.  The proposer is implemented in MATLAB.  The
-verifier program is much simpler than the proposer---since all it does
+a \emph{verifier}.  The analyzer is implemented in MATLAB.  The
+verifier program is much simpler than the analyzer---since all it does
 is synthesize and sum some waveforms---and we have implementations in
 MATLAB and in C.
 
@@ -78,33 +82,36 @@ hand.  Therefore, formal program verification usually uses software
 valid, and \emph{proof assistants} and/or \emph{automated theorem
 provers} to automate many steps of the proof.
 
-We formally verify the verifier, not the proposer.  We believe the proposer is correct, but it need not
+We formally verify the verifier, not the analyzer.  We believe the analyzer is correct, but it need not
 be \emph{proved} correct, since any hypothesis it proposes can be independently checked by the verifier.
+Furthermore, this arrangement allows continued improvements of the analyzer's
+(to describe a set of waves that more accurately account for the input data) without
+altering the verifier or its proof.
 
 \section{Specification}
 \newcommand\Nfr{\ensuremath{{N_\mathrm{fr}}}}
 \newcommand\Nb{\ensuremath{{N_\mathrm{b}}}}
-\newcommand\Xbg{\ensuremath{{X_\mathrm{bg}}}}
-\newcommand\Xsyn{\ensuremath{{X_\mathrm{syn}}}}
-\newcommand\Nt{\ensuremath{{N^\mathrm{(t)}}}}
-\newcommand\phase{\ensuremath{\phi}}
+\newcommand\NB{\ensuremath{{N_\mathrm{B}}}}
 The \emph{input data} is a time series $X: \mathbb{R}^\Nfr \times \mathbb{R}^\Nb$
 of $\Nfr$ \emph{frames} each containing $\Nb$ \emph{brightness} values.
-Typically $\Nfr$ might be approximately $10^5$ and (in the experimental apparatus used) $\Nb=101$.  The brightness
+Typically $\Nfr$ might be approximately $10^5$ and (in the experimental apparatus used) $\Nb=101$.  
+The brightness
 values are understood as equally spaced around the circumference of a circle, so that
-points $i$ and \mbox{$(i+1) \mod \Nb$} are adjacent in (angular) space, and $X(t,i)$
-represents the brightness at time $t$, angle $\theta(i) = 2\pi i / \Nb$.  Between each time $t$ and $t+1$ there is
-some real time interval, some number of microseconds, but it is not necessary to know that value in
-forming or checking hypotheses.
+points $i$ and \mbox{$(i+1) \mod \Nb$} are adjacent in (angular) space.
+Between frame $k$ and frame $k+1$ there is
+time interval $\delta$, typically 20 microseconds.
+Thus, $X_{k,i}$
+represents the brightness at time $k\delta$, angle $\theta(i) = \frac{2\pi}{\Nb}i$.  
 
 \paragraph{Hypothesis, first attempt.}
-One might hypothesize that brightness $X(t,i)$ is the sum of $W$ waves,
-where the $w$th wave $(0\le w <W)$ is described by a velocity $v_w$, amplitude $A_w$, phase $\phase_w$
-and width $\sigma_w$.  Therefore we synthesize
-\[
-X_\mathrm{syn}^\mathrm{naive}(t,i) = \sum_{w=0}^{W-1} A_w \mathrm{exp}(- \frac{(\phase_w + v_w t - \theta(i))^2}{2 \sigma_w^2}).
-\]
-However, we found this does not lead to an accurate estimation of $X$.  The waves do not have
+One might hypothesize that brightness $X_{k,i}$ is the sum of $W$ waves,
+where the $w$th wave $(0\le w <W)$ is described by a velocity $v_w$, amplitude $A_w$, phase $\theta_{w,0}$,
+and shaped like a Gaussian distribution of width $\sigma_w$.  Therefore we synthesize
+\begin{equation}\label{Snaive}
+S^\mathrm{naive}_{k,i} = \sum_{w=0}^{W-1} A_w \mathrm{exp}(- \frac{(\theta_{w,0} + v_w k \delta -
+  \frac{2\pi}{\Nb}i)^2}{2 \sigma_w^2}).
+\end{equation}
+However, this does not lead to an accurate estimation of $X$.  The waves do not have
 constant amplitude, nor constant velocity, nor constant width.  Instead, all three of these
 are slowly varying functions of time.\footnote{If these values were arbitrary chaotic functions of time,
 it would be inappropriate to speak of a ``wave.''  The limitation to slowly varying functions is
@@ -114,49 +121,76 @@ engineer designing and measuring the combustion chamber.}
 Furthermore, we found that there is a \emph{static background}.  That is, each of the $\Nb$ points around
 the ring is consistently brighter or dimmer, regardless of $t$.  This may be a calibration issue, or
 it may be that some parts of the ring are consistently hotter than others; either way, we can formulate
-a hypothesis with a static background $\Xbg: \mathbb{R}^\Nb$.
+a hypothesis with a static background $B: \mathbb{R}^\Nb$, which is also a slowly varying function of time.
 
 \paragraph{Hypothesis, final form.}
-We explain $X(t,i)$ as the sum of $W$ waves plus a static background $\Xbg(i)$.
-The amplitude of the $w$th wave $(0\le w <W)$ is described by a time series $A_w : \mathbb{R}^{\Nt_w}$
-and its velocity is a time series $v_w : \mathbb{R}^{\Nt_w}$.
-That is, for each $k$ such that $0 \le k \le \Nt_w$,
-the wave's velocity at time $k \frac{\Nfr}{\Nt_w}$ is $v_w[k]$,
-its amplitude is $A_w[k]$, and its width is $\sigma_w[k]$.
+For $0 \le k < \Nfr$ and $0 \le i < \Nb$,
+we explain $X_{k,i}$ as the sum of $W$ waves plus a static background.
 
-Of course, $k \frac{\Nfr}{\Nt_w}$ is not necessarily an integer value, so we interpolate.
-At present we are using linear interpolation.
-That is, for any $f: \mathbb{R}^{d}$,
-\[
-\hat{f}(d,t) = \frac{ f(a) (b - t\frac{d}{\Nfr})
-  + f(b) (t\frac{d}{\Nfr} - a )}
-    { b- a  }.
-\]
-where $a=\lfloor t\frac{d}{\Nfr}\rfloor$ and $b=\lfloor (1+t)\frac{d}{\Nfr} \rfloor$.
+To represent that the $w$th wave's amplitude, width, velocity are \emph{slowly varying} functions of time,
+we represent each of those functions by a time series over $N_w$ equally spaced points, where $N_w < \Nfr$,
+spanning the time $0$ to $(\Nfr-1)\delta$.
+That is, for each $j$ such that $0 \le j \le N_w$,
+the wave's amplitude at time  $\frac{\Nfr \delta}{N_w}k$ is
+$A_{w,j}$, its width is $\sigma_{w,j}$,
+and its velocity is $v_{w,j}$, and its initial position is $\theta_{w,0}$.
 
-%\[
-%\hat{f}(d,t) = \frac{ f(\lfloor t\frac{d}{\Nfr}\rfloor) (\lfloor (1+t)\frac{d}{\Nfr} \rfloor - t\frac{d}{\Nfr})
-%  + f(\lfloor (1+t)\frac{d}{\Nfr}\rfloor) (t\frac{d}{\Nfr} - \lfloor t\frac{d}{\Nfr} \rfloor)}
-%    { \lfloor (1+t)\frac{d}{\Nfr}\rfloor - \lfloor t\frac{d}{\Nfr} \rfloor }.
-%\]
+Then we use linear interpolation to reconstruct the value at time $k\delta$.
+For example, the interpolation of $A$ at time $k \delta$
+is calculated as follows.
+Let $f=(\Nfr-1)/(N_w-1)$, the ratio between the real time range and the compressed index range.
+Let $j=\lfloor k/f \rfloor$ and $i+1$ be the points
+in (the compressed) $A$ between which we want to interpolate.
+Then the result is
+\begin{equation}\label{Ahat}
+ \hat{A}_{w,k} = A_{w,j} + \frac{k-fj}{f}(A_{w,j+1}-A_{w,j}).
+\end{equation}
 
-\vspace{\baselineskip}
+The velocity wave $w$ is a slowly varying function of time $v_{w,j}$ where $j$ ranges
+from $0$ to $N_w-1$.  We interpolate as above to calculate $\hat{v}$,
+and we reconstruct the angular position of the $w$th wave at the $k$th time-step, as follows.
+\begin{equation}\label{thetawk}
+\theta_{w,k} = \left\{ 
+\begin{array}{ll}
+\theta_{w,0} & \mathrm{if}~k=0 \\ 
+(\theta_{w,k-1}+\hat{v}_{w,k}\delta) \mod 2\pi  ~~~& \mathrm{if}~k>0
+\end{array}
+\right.
+\end{equation}
 
-Thus we define
-\[
-\Xsyn(t,i) = \Xbg(i) + \sum_{w=0}^{W-1} \hat{A}_w(\Nt_w,t) \mathrm{exp}(- \frac{(\phase_w + \hat{v}_w(\Nt_w,t)\cdot t - \theta(i))^2}{2 (\hat{\sigma}_w(\Nt_w,t))^2}).
-\]
+The shape of wave $w$ is assumed to be a Gaussian with width $\sigma_{w,k}$ at time $k\delta$,
+so the height of $w$ at time-step $k$ and position $i$ is,
+\begin{equation}\label{awki}
+a_{w,k,i} = \hat{A}_{w,i}\exp(-\mathrm{wrap}(2\pi\frac{i}{\Nb} - \theta_{w,k})^2 / (2\sigma ^2 ))
+\end{equation}
+where $\mathrm{wrap}(\phi)$ range-reduces $\phi$ to a value between $-\pi$ and $+\pi$.
 
-Now we can calculate the accuracy of this hypothesis:
+The static background is represented as a two-dimensional array $B_{j,i}$,
+for $0 \le j < \NB$ and $0 \le i < \Nb$, where $\NB < \Nfr$ to indicate that
+$B$ is a slowly varying function of time.
+However, in reconstruction we do not use linear interpolation, just simple rounding to nearest.
+That is, the synthesized background at time $k$, position $i$ is,
+\begin{equation}\label{Bki}
+\hat{B}_{k,i} = B_{j,i}\qquad \mathrm{where}~j=\frac{\NB-1}{\Nfr-1}k
+\end{equation}
 
-\[
-\tau = || \Xsyn - X ||_1
-\]
 
-In conclusion:  To explain a dataset $(\Nfr,\Nb,X)$, a \emph{hypothesis} is a tuple $(D,\tau)$ where
-$D=(\Xbg,(\Nt_0,A_0,v_0,\sigma_0),\ldots (\Nt_{w-1},A_{w-1},v_{w-1},\sigma_{w_1}))$,
-each $A_w$, $v_w$, and $\sigma_w$ is in $\mathbb{R}^{\Nt_w}$,
-and where $||\Xsyn(D)-X ||_1 \le \tau $.
+Thus we define the synthesized brightness function as,
+\begin{equation}\label{Ski}
+S_{k,i} = \hat{B}_{k,i} + \sum_{w=0}^{W-1} a_{w,k,i}
+\end{equation}
+
+Now we can calculate the accuracy of this hypothesis.  The error $\epsilon$ is the
+sum of the differences at each point:
+
+\begin{equation}\label{epsilon}
+\epsilon = \sum_{k=0}^{\Nfr-1}\sum_{i=0}^{\Nb-1} | S_{k,i}-X_{k,i} |
+\end{equation}
+
+\paragraph{Conclusion:}  To explain a dataset $(\Nfr,\Nb,X)$, a \emph{hypothesis} is a tuple $(D,\tau)$ where
+$D=(B,(N_0,A_0,v_0,\sigma_0),\ldots (N_{w-1},A_{w-1},v_{w-1},\sigma_{w_1}))$;
+where each $A_w$, $v_w$, and $\sigma_w$ is in $\mathbb{R}^{N_w}$;
+and where the error $\epsilon = ||S(D)-X ||_1$ is $\le \tau $.
 
 \section{How to find a hypothesis}
 
@@ -164,14 +198,52 @@ it ain't trivial.  Tim will explain \ldots
 
 \section{How to verify a hypothesis}
 
-We have this function in MATLAB:
-\begin{lstlisting}[language=matlab]
-  blah blah
-\end{lstlisting}
+Listing~\ref{Csynth} shows the C program of the verifier.
 
-and this one in C:
-\begin{lstlisting}[language=C]
-  blah blah
+\begin{lstlisting}[language=C,float,label=Csynth,caption={The verifier as a C program}]
+#define L (2.0*M_PI)
+double range2pi(double x) {       // $\mathrm{calculate}~x \mod 2\pi $
+  return x - L * floor (x / L);
+}
+
+double wrap(double x) {
+  return range2pi(x+L/2.0)-L/2.0;
+}
+
+double interpolate(double f, double *y, int n, double k) {
+    int j = floor(k/f);     $\mbox{\quad // equation (\ref{Ahat})}$
+    return y[j] + ((k - j*f) / f) * (y[j+1] - y[j]);
+}
+
+void synthesize(Data *data, double *S) {
+  int Nw = data->num_waves, Nb = data->Nb, Nfr = data->Nfr, Nbg  = data->Nbg;
+  double dt = data->dt;
+  Wave *waves = data->waves;
+  double theta [ MAX_WAVES ];
+  int w,k,i;
+
+  for (k = 0; k < Nfr; k++) {
+    for (i = 0; i < Nb; i++) {
+      double a = data->BG[i + (int)(k*((double)(Nbg - 1)) / (Nfr - 1))*Nb];  $\mbox{// equation (\ref{Bki})}$
+
+      for (w = 0; w < Nw; w++) {
+        int Nt = waves[w].Nt;
+        double f = (double)(Nfr - 1) / (double)(Nt - 1);
+        double A     = interpolate(f, waves[w].A, Nt, k);
+        double sigma = interpolate(f, waves[w].sigma, Nt, k);
+
+	if (k==0)           $\mbox{// equation (\ref{thetawk})}$
+	  theta[w] = waves[w].theta0;
+	else if (i==0) {
+	  double v = interpolate(f, waves[w].v, Nt, k-1);
+	  theta[w] = range2pi (theta[w] + v * dt);
+	}
+
+        double dx = wrap(i * (L / Nb) - theta[w]);   
+        a += A * exp(-dx*dx/(2.0*sigma*sigma));   $\mbox{// eqn. (\ref{awki})}$
+      }
+      S[i + k*Nb] = a;
+} } }
 \end{lstlisting}
 
 \section{Proving correctness of the verifier}
