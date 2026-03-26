@@ -1,3 +1,12 @@
+analyzer/checker
+proof/checker.v
+proof/CoqMakefile
+proof/CoqMakefile.conf
+doc/*.aux
+doc/*.bbl
+doc/*.blg
+doc/*.log
+doc/*.out
 .*.aux
 .*.d
 *.a

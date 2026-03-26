@@ -1,0 +1,27 @@
+#
+COQDOCEXTRAFLAGS= -g --no-lib-name --with-header header.html --index genindex --lib-subtitles --interpolate --parse-comments -utf8
+
+#   standard "make clean" removes the html directory entirely.  So we gotta do this hack:
+# html/index.html: html index.html
+# 	cp index.html html/index.html
+
+# publish: html html/index.html
+# 	cd ../gh-pages; git submodule update
+# 	cd ../gh-pages; mkdir -p proofdoc
+# 	cp html/* ../gh-pages/proofdoc
+# 	$(HIDE)for i in ../gh-pages/proofdoc/*; do \
+# 	 if [ ! -f html/`basename $$i` ]; then \
+# 	   echo git rm --force $$i; git rm --force $$i; \
+# 	   fi; done
+# 	cd ../gh-pages; git add proofdoc
+# 	cd ../gh-pages; git commit -m "Publishing proof docs" proofdoc
+# 	cd ../gh-pages; git push
+
+# CONVERTING .c FILES TO .v FILES USING clightgen
+
+%.v: ../analyzer/%.c
+	clightgen -normalize $< -o $@
+
+# the rest of this is adapted from the makedepend part of ../Makefile
+checker.v: ../analyzer/checker.c   # this line superfluous until .h files (if any) are added to dependencies
+
