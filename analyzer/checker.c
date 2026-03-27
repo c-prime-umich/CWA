@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include "densemat.h"
 
 #define MAX_WAVES 100
 #define L (2.0*M_PI)
@@ -198,14 +199,71 @@ double range2pi(double x) {
 }
 
 double wrap(double x) {
-  return range2pi(x+L/2.0)-L/2.0;
+  return range2pi(x+M_PI)-M_PI;
 }
 
-double interpolate(double f, double *y, double k) {
+#ifdef CHECK_AGAINST_REF
+/* This version, synthesize_ref, was already checked against Tim's original version
+     and found to agree within a 1-norm of 10e-5 overall; that is, only slight
+     differences in roundoff due to calculating the floating point in a different order.
+
+     When CHECK_AGAINST_REF is defined, this version is run in addition to synthesize()
+     and the results are compared.
+ */
+
+double interpolate_ref(double f, double *y, double k) {
     int j = floor(k/f);
     double frac = ((k - j*f) / f);
     // avoid accessing y[j+1] if we're at the very end where y[j+1] does not exist
     return frac>0.0 ? y[j] + frac * (y[j+1] - y[j]) : y[j];
+}
+
+void synthesize_ref(Data *data, double *S) {
+  int Nw = data->num_waves;
+  int Nb = data->Nb;
+  int Nfr = data->Nfr;
+  int Nbg  = data->Nbg;
+  double dt = data->dt;
+  Wave *waves = data->waves;
+  double theta [ MAX_WAVES ];
+  int w,k,i;
+
+  for (k = 0; k < Nfr; k++) {
+    for (i = 0; i < Nb; i++) {
+      double a = data->BG[i + (int)(k*((double)(Nbg - 1)) / (Nfr - 1))*Nb];
+
+      for (w = 0; w < Nw; w++) {
+        int Nt = waves[w].Nt;
+        double f = (double)(Nfr - 1) / (double)(Nt - 1);
+        double A     = interpolate_ref(f, waves[w].A, k);
+        double sigma = interpolate_ref(f, waves[w].sigma, k);
+
+	if (k==0)
+	  theta[w] = waves[w].theta0;
+	else if (i==0) {
+	  double v = interpolate_ref(f, waves[w].v, k-1);
+	  theta[w] = range2pi (theta[w] + v * dt);
+	}
+
+        double dx = wrap(i * (L / Nb) - theta[w]);   
+        a += A * exp(-dx*dx / (2.0 * sigma * sigma));
+      }
+      S[i + k*Nb] = a;
+    }
+  }
+}
+#endif
+
+double interpolate(int Nfr, int Nt, double *y, double k) {
+  double a = (k/(double)(Nfr-1))*(Nt-1);
+    int j = floor(a);
+    // avoid accessing y[j+1] if we're at the very end where y[j+1] does not exist
+    double yj = densematn_get(y, 1, 0, j);
+    if (j+1<Nt) {
+      double yj1 = densematn_get(y, 1, 0, j+1);
+      return ((j+1)-a)*yj + (a-j) * yj1;
+    }
+    else return yj;
 }
 
 double synthesize(Data *data) {
@@ -221,30 +279,41 @@ double synthesize(Data *data) {
   double diff_sum=0.0, energy=0.0, x;
   int w,k,i;
 
+#ifdef CHECK_AGAINST_REF
+  double err_sum = 0.0;
+  double * XT_syn = (double*)malloc(Nfr*Nb*sizeof(double));
+  synthesize_ref(data, XT_syn);
+#endif
+
   for (k = 0; k < Nfr; k++) {
     for (i = 0; i < Nb; i++) {
-      double a = BG[i + (int)(k*((double)(Nbg - 1)) / (Nfr - 1))*Nb];
+      double a = densematn_get(BG, Nb, i, (int)(k*((double)(Nbg - 1)) / (Nfr - 1)));
 
       for (w = 0; w < Nw; w++) {
         int Nt = waves[w].Nt;
-        double f = (double)(Nfr - 1) / (double)(Nt - 1);
-        double A     = interpolate(f, waves[w].A, k);
-        double sigma = interpolate(f, waves[w].sigma, k);
+        double A     = interpolate(Nfr,Nt, waves[w].A, k);
+        double sigma = interpolate(Nfr,Nt, waves[w].sigma, k);
 
 	if (k==0)
 	  theta[w] = waves[w].theta0;
 	else if (i==0) {
-	  double v = interpolate(f, waves[w].v, k-1);
+	  double v = interpolate(Nfr,Nt, waves[w].v, k-1);
 	  theta[w] = range2pi (theta[w] + v * dt);
 	}
         double dx = wrap(i * (L / Nb) - theta[w]);   
         a += A * exp(-(dx*dx / (2.0 * (sigma * sigma))));
       }
-      x = X[i+k*Nb];
+#ifdef CHECK_AGAINST_REF  
+      err_sum += fabs (a - XT_syn[i+k*Nb]);
+#endif
+      x = densematn_get(X, Nb, i, k);
       energy += fabs(x);
       diff_sum += fabs (x-a);
     }
   }
+#ifdef CHECK_AGAINST_REF
+  printf ("difference from synthesize_ref = %g\n",err_sum);
+#endif
   return diff_sum / energy;
 }
 
