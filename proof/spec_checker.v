@@ -69,13 +69,21 @@ Definition wx_to_waverep (wx: Wave.t * (val*val*val)) : val * (val * (val * (val
   let '(w, (Ap, sigmap, vp)) := wx in
   (Ap, (sigmap, (vp, (Vint (Int.repr (S (Wave.N w))), Vfloat (Wave.θ0 w))))).
 
+Definition wx_to_wavedata sh (wx: Wave.t * (val*val*val)) : mpred :=
+ let '(w, (Ap, σp, vp)) := wx in
+    densematn sh (map_mx Some (Wave.A w)) Ap
+ * densematn sh (map_mx Some (Wave.σ w)) σp
+ * densematn sh (map_mx Some (Wave.v w)) vp.
+
 Definition data_rep (sh: share) (d: Data.t) (p: val) : mpred :=
- EX Xp: val, EX Bp: val, EX wp: val, EX wx: list (Wave.t*(val*val*val)),
+ EX Xp: val, EX Bp: val, EX wx: list (Wave.t*(val*val*val)),
   !! (map fst wx = Data.waves d) &&
-  data_at sh tdata (Xp, (Bp, (Vint (Int.repr (Data.Nb d)), (Vint (Int.repr (Data.Nfr d)), (Vint (Int.repr (Data.Nbg d)),
+  data_at sh tdata (Xp, (Bp, 
+                              (Vint (Int.repr (S (Data.Nb d))), (Vint (Int.repr (S (Data.Nfr d))), (Vint (Int.repr (S (Data.Nbg d))),
                                  (Vfloat (Data.dt d), (map wx_to_waverep wx, Vint (Int.repr (Zlength (Data.waves d)))))))))) p 
  * densematn sh (map_mx Some (Data.X d)) Xp
- * densematn sh (map_mx Some (Data.BG d)) Bp.
+ * densematn sh (map_mx Some (Data.BG d)) Bp
+ * fold_right sepcon  emp (map (wx_to_wavedata sh) wx).
 
 Definition floor_spec :=  (* really should get this from mathlib *)
  DECLARE _floor
@@ -145,7 +153,7 @@ Definition synthesize_spec :=
     PROP(readable_share sh)
     PARAMS(p)
     SEP(data_rep sh d p)
-  POST[ tint ]
+  POST[ tdouble ]
     PROP()
     RETURN (Vfloat (synth_err d))
     SEP(data_rep sh d p).

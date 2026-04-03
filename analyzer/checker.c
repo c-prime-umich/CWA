@@ -286,20 +286,22 @@ double synthesize(Data *data) {
 #endif
 
   for (k = 0; k < Nfr; k++) {
+    int bg_col = (int)((k/(double)(Nfr - 1))*(Nbg - 1));
     for (i = 0; i < Nb; i++) {
-      double a = densematn_get(BG, Nb, i, (int)(k*((double)(Nbg - 1)) / (Nfr - 1)));
+      double a = densematn_get(BG, Nb, i, bg_col);
 
       for (w = 0; w < Nw; w++) {
         int Nt = waves[w].Nt;
         double A     = interpolate(Nfr,Nt, waves[w].A, k);
         double sigma = interpolate(Nfr,Nt, waves[w].sigma, k);
 
-	if (k==0)
-	  theta[w] = waves[w].theta0;
-	else if (i==0) {
-	  double v = interpolate(Nfr,Nt, waves[w].v, k-1);
-	  theta[w] = range2pi (theta[w] + v * dt);
-	}
+	if (i==0)
+	  if (k==0)
+	    theta[w] = waves[w].theta0;
+	  else {
+	    double v = interpolate(Nfr,Nt, waves[w].v, k-1);
+	    theta[w] = range2pi (theta[w] + v * dt);
+	  }
         double dx = wrap(i * (L / Nb) - theta[w]);   
         a += A * exp(-(dx*dx / (2.0 * (sigma * sigma))));
       }

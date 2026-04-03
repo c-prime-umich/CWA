@@ -3,7 +3,7 @@ run: checker
 	./checker data
 
 checker.o: checker.c densemat.h
-	gcc -c -O2 checker.c
+	gcc -c -O2 -DCHECK_AGAINST_REF checker.c
 
 densemat.o: densemat.c densemat.h alloc.h
 	gcc -c -O2 densemat.c
