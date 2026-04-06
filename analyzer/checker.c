@@ -280,6 +280,7 @@ double synthesize(Data *data) {
   int w,k,i;
 
 #ifdef CHECK_AGAINST_REF
+  double bg_sum = 0.0;
   double err_sum = 0.0;
   double * XT_syn = (double*)malloc(Nfr*Nb*sizeof(double));
   synthesize_ref(data, XT_syn);
@@ -289,7 +290,9 @@ double synthesize(Data *data) {
     int bg_col = (int)((k/(double)(Nfr - 1))*(Nbg - 1));
     for (i = 0; i < Nb; i++) {
       double a = densematn_get(BG, Nb, i, bg_col);
-
+#ifdef CHECK_AGAINST_REF
+      bg_sum += fabs (a);
+#endif
       for (w = 0; w < Nw; w++) {
         int Nt = waves[w].Nt;
         double A     = interpolate(Nfr,Nt, waves[w].A, k);
@@ -315,6 +318,7 @@ double synthesize(Data *data) {
   }
 #ifdef CHECK_AGAINST_REF
   printf ("difference from synthesize_ref = %g\n",err_sum);
+  printf ("static background is %g%% of signal\n",100 * (bg_sum/energy));
 #endif
   return diff_sum / energy;
 }

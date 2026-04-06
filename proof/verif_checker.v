@@ -95,6 +95,11 @@ Definition synthesize_i_loop : statement :=
   exact (Ssequence (Sset _i (Econst_int z t)) B)
  end).
 
+Definition synthesize_w_loop : statement :=
+ ltac:(let body := constr:(fn_body f_synthesize) in let body := eval simpl in body in 
+ match body with context [ Ssequence (Sset _w (Econst_int ?z ?t)) ?B ] =>
+  exact (Ssequence (Sset _w (Econst_int z t)) B)
+ end).
 
 Lemma mk_ord [n: nat] [k: Z] (Hk: 0 <= k < Z.of_nat n):  Datatypes.is_true (ssrnat.leq (S (Z.to_nat k)) n).
 Proof.
@@ -161,21 +166,19 @@ Definition MAXW_eq: MAXW=100 := proj2_sig (opaque_constant 100).
 Hint Rewrite MAXW_eq: rep_lia.
 
 
-Lemma semax_synthesize_i_loop:
- forall {Espec: OracleKind}  Nfr Nb Nbg dt (BG :  'M[ftype Tdouble]_(S Nb,S Nbg)) 
-          (X:  'M[ftype Tdouble]_(S Nb, S Nfr)) 
-         (Xp Bp  p v_theta: val) sh (k: Z) (wx : list (Wave.t * (val * val * val)))
- (SH : readable_share sh)
- (Hfr : Z.of_nat (S Nb * S Nfr) <= Int.max_signed)
- (Hbg : Z.of_nat (S Nb * S Nbg) <= Int.max_signed)
-(* (HBG: forall i j, Binary.is_finite (BG i j) = true)
- (HX: forall i j, Binary.is_finite (X i j) = true)
- (Hdt: Binary.is_finite dt = true)
- (Hw: Forall wave_finite (map fst wx))
-*)
- (Hwx : Zlength wx <= MAXW)
- (H : 0 <= k < Z.of_nat (S Nfr))
- (Hk : Datatypes.is_true (ssrnat.leq (S (Z.to_nat k)) (S Nfr))),
+Lemma semax_synthesize_w_loop:
+forall {Espec : OracleKind} [Nfr Nb Nbg : nat]
+ (dt : float) (BG : 'M[ftype Tdouble]_(S Nb, S Nbg)) (X : 'M[ftype Tdouble]_(S Nb, S Nfr))
+ (Xp Bp p v_theta : val)
+ (sh : share)
+  (k : Z)
+  (wx : list (Wave.t * (val * val * val)))
+  (SH : readable_share sh)
+  (Hfr : Z.of_nat (S Nb * S Nfr) <= Int.max_signed)
+  (Hbg : Z.of_nat (S Nb * S Nbg) <= Int.max_signed)
+  (Hwx : Zlength wx <= MAXW)
+  (H : 0 <= k < Z.of_nat (S Nfr))
+  (Hk : Datatypes.is_true (ssrnat.leq (S (Z.to_nat k)) (S Nfr))),
 let FR1 := @abbreviate _ 
   (map
     (fun i : nat =>
@@ -193,143 +196,51 @@ let FR1 := @abbreviate _
         densematn sh (map_mx Some BG) Bp;
         fold_right sepcon emp (map (wx_to_wavedata sh) wx)]
        emp)
-    (map Z.to_nat [1])) in 
-semax (func_tycontext f_synthesize Vprog Gprog nil)
+    (map Z.to_nat [1])) in  
+ let j' := Ordinal (getBG_col Nfr Nbg (Ordinal Hk)) : 'I_(S Nbg) in
+ forall (Hbgcol : (nat_of_ord j' <= S Nfr)%nat)
+  (θw : list (val * Wave.t))
+  (energy  diff_sum : ftype Tdouble)
+  (Hθ : map snd θw = map fst wx)
+  (Hk0 : k <> 0 -> Forall (is_float oo fst) θw),
+ let iteri_upto :=
+  fun i : Z => seq.foldl (one_iteri dt BG X (Ordinal Hk)) (θw, (energy, diff_sum)) (sublist 0 i (ord_enum (S Nb))) in
+ let θw'' := fun i : Z => fst (iteri_upto (i + 1)) in
+  forall (i : Z)
+  (H0 : 0 <= i < Z.of_nat (S Nb))
+  (Hi : Datatypes.is_true (ssrnat.leq (S (Z.to_nat i)) (S Nb)))
+  (θw' : list (val * Wave.t))
+  (energy' diff_sum' : ftype Tdouble)
+  (H1 : iteri_upto i = (θw', (energy', diff_sum'))),
+ let i' := Ordinal Hi : 'I_(S Nb) in
+ let ew := map (fun f : 'cV_(S Nb) => fun_of_matrix f i' ord0) (map (waveform dt (Ordinal Hk)) (θw'' i)) : list (ftype Tdouble) in
+  semax (func_tycontext f_synthesize Vprog Gprog nil)
   (PROP ( )
-   LOCAL (
-    temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord (Ordinal (getBG_col Nfr Nbg (Ordinal Hk)))))));
-   temp _k (Vint (Int.repr k));
-   temp _energy (Vfloat (fst (snd (iterk dt BG X (map fst wx) (Z.to_nat k)))));
-   temp _diff_sum (Vfloat (snd (snd (iterk dt BG X (map fst wx) (Z.to_nat k))))); 
-   temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
-   temp _Nbg (Vint (Int.repr (S Nbg))); temp _Nfr (Vint (Int.repr (S Nfr)));
-   temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength (map fst wx))));
-   lvar _theta (tarray tdouble  MAXW) v_theta; temp _data p)
-   SEP (FRZL FR1;
-   data_at Tsh (tarray tdouble MAXW)
-       (map fst (fst (iterk dt BG X (map fst wx) (Z.to_nat k))) ++
-      Zrepeat Vundef (MAXW - Zlength wx))
-     v_theta;
-   densematn sh (map_mx Some X) Xp; densematn sh (map_mx Some BG) Bp;
-   fold_right sepcon emp (map (wx_to_wavedata sh) wx)))
-  synthesize_i_loop
-  (normal_ret_assert
-     (PROP ( )
-      LOCAL (
-       temp _k (Vint (Int.repr k));
-       temp _energy (Vfloat (fst (snd (iterk dt BG X (map fst wx) (Z.to_nat (k + 1))))));
-       temp _diff_sum (Vfloat (snd (snd (iterk dt BG X (map fst wx) (Z.to_nat (k + 1)))))); 
-       temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
-       temp _Nbg (Vint (Int.repr (S Nbg))); temp _Nfr (Vint (Int.repr (S Nfr)));
-       temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength (map fst wx))));
-       lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
-      SEP (FRZL FR1;
-      data_at Tsh (tarray tdouble MAXW)
-        (map fst (fst (iterk dt BG X (map fst wx) (Z.to_nat (k + 1)))) ++
-         Zrepeat Vundef (MAXW - Zlength wx))
-        v_theta;
-      densematn sh (map_mx Some X) Xp; densematn sh (map_mx Some BG) Bp;
-      fold_right sepcon emp (map (wx_to_wavedata sh) wx)))).
+   LOCAL (temp _a (val_of_float (fun_of_matrix BG i' j')); temp _i (Vint (Int.repr i)); temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord j'))));
+   temp _k (Vint (Int.repr k)); temp _energy (Vfloat energy'); temp _diff_sum (Vfloat diff_sum'); temp _X Xp; temp _BG Bp;
+   temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt); temp _Nbg (Vint (Int.repr (Z.of_nat (S Nbg))));
+   temp _Nfr (Vint (Int.repr (Z.of_nat (S Nfr)))); temp _Nb (Vint (Int.repr (Z.of_nat (S Nb)))); temp _Nw (Vint (Int.repr (Zlength wx)));
+   lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
+   SEP (densematn sh (map_mx Some BG) Bp; FRZL FR1; data_at Tsh (tarray tdouble MAXW) (map fst θw' ++ Zrepeat Vundef (MAXW - Zlength wx)) v_theta;
+   densematn sh (map_mx Some X) Xp; fold_right sepcon emp (map (wx_to_wavedata sh) wx)))
+  synthesize_w_loop
+ (normal_ret_assert 
+  (PROP ( )
+   LOCAL (temp _a (Vfloat (seq.foldl BPLUS (BG i' j') ew)); temp _i (Vint (Int.repr i));
+   temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord j')))); temp _k (Vint (Int.repr k));
+   temp _energy (Vfloat energy'); temp _diff_sum (Vfloat diff_sum'); temp _X Xp; 
+   temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
+   temp _Nbg (Vint (Int.repr (Z.of_nat (S Nbg)))); temp _Nfr (Vint (Int.repr (Z.of_nat (S Nfr))));
+   temp _Nb (Vint (Int.repr (Z.of_nat (S Nb)))); temp _Nw (Vint (Int.repr (Zlength wx)));
+   lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
+   SEP (densematn sh (map_mx Some BG) Bp; FRZL FR1;
+            data_at Tsh (tarray tdouble MAXW)
+                (map fst (θw'' i) ++ Zrepeat Vundef (MAXW - Zlength wx)) v_theta;
+            densematn sh (map_mx Some X) Xp;
+            fold_right sepcon emp (map (wx_to_wavedata sh) wx)))).
 Proof.
 intros.
-rewrite Zlength_map.
-assert (Hbgcol :=bg_col_range Nfr Nbg (Ordinal Hk)).
-unfold iterk.
-replace (Z.to_nat (k+1)) with (Z.to_nat k + 1)%nat by lia.
-rewrite <- firstn_app.
-change (@app ('I_(S Nfr))) with (@seq.cat ('I_(S Nfr))).
-rewrite seq.foldl_cat.
-set (u := seq.foldl _ _ (firstn (Z.to_nat k) (ord_enum (S Nfr)))).
-assert (Hθ: map snd (fst u) = map fst wx). {
- forget (firstn (Z.to_nat k) (ord_enum (S Nfr))) as L.
- clear; subst u.
- unfold initial_values.
- change @seq.map with @map.
- rewrite map_map.
- rewrite <- (seq.revK L). rewrite seq.foldl_rev.
- induction (seq.rev L); simpl.
- rewrite !map_map. simpl. f_equal. rewrite <- IHl; clear IHl.
- destruct (seq.foldr _ _ _). simpl in *. destruct p; simpl.
- destruct (eqtype.eq_op _ _);
- rewrite !map_map; f_equal.
- extensionality x. destruct x; simpl; auto.
-}
-(* HERE *)
-destruct u as [θw [energy diff_sum]] eqn:?H.
-assert (Hk0: k <> 0 -> Forall (is_float oo fst) θw). {
- intro; subst u.
- destruct (Z.to_nat k) eqn:?H; [ lia | ].
- clear - H0. simpl in H0.
- destruct (ord_enum (S (Nfr))) eqn:?H.
- pose proof (mv_mathcomp.size_ord_enum (S Nfr)).  rewrite H in H1; inv H1. 
-
-(*
-assert (Hk0: k<>0 -> Forall (Datatypes.is_true oo @Binary.is_finite _ _ oo fst) θw). {
- intro. subst u.
- destruct (Z.to_nat k) eqn:?H; [ lia | ].
- clear - H0.
-*)
- admit. (* looks fine *)
-}
-clearbody u. clear H0 u. 
-simpl in Hθ.
-replace (firstn 1 (skipn (Z.to_nat k) (ord_enum (S Nfr)))) with [@Znth _ ord0 k (ord_enum (S Nfr))].
-2:{
-change 1%nat with (Z.to_nat 1).
-rewrite <- sublist_firstn.
-rewrite <- sublist_skip by lia.
-assert (Zlength (ord_enum (S Nfr)) = Z.of_nat (S Nfr)).
-rewrite Zlength_correct, mv_mathcomp.size_ord_enum; auto.
-autorewrite with sublist.
-symmetry; apply sublist_one; try lia.
-}
-change (seq.foldl ?A ?B [?C]) with (A B C).
-rewrite (Znth_ord_enum Hk) by lia; auto.
-change (snd (?A,?B)) with B.
-repeat change (fst (?A,?B)) with A.
-rewrite <- all_iteri.
-unfold synthesize_i_loop.
-abbreviate_semax.
-set (iteri_upto i := seq.foldl (one_iteri dt BG X (Ordinal Hk)) (θw, (energy, diff_sum)) (sublist 0 i (ord_enum (S Nb)))).
-set (θw'' i := fst (iteri_upto (i+1))).
-forward_for_simple_bound (Z.of_nat (S Nb)) (EX i:Z,
-     (PROP ( )
-      LOCAL (
-       temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord (Ordinal (getBG_col Nfr Nbg (Ordinal Hk)))))));
-      temp _k (Vint (Int.repr k));
-      temp _energy
-        (Vfloat (fst (snd (iteri_upto i))));
-      temp _diff_sum (Vfloat (snd (snd (iteri_upto i))));
-      temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
-      temp _Nbg (Vint (Int.repr (Z.of_nat (S Nbg)))); temp _Nfr (Vint (Int.repr (Z.of_nat (S Nfr))));
-      temp _Nb (Vint (Int.repr (Z.of_nat (S Nb)))); temp _Nw (Vint (Int.repr (Zlength wx)));
-      lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
-      SEP (FRZL FR1;
-      data_at Tsh (tarray tdouble MAXW)
-        (map fst (fst (iteri_upto i)) ++ Zrepeat Vundef (MAXW - Zlength wx))
-        v_theta;
-      densematn sh (map_mx Some X) Xp; densematn sh (map_mx Some BG) Bp;
-      fold_right sepcon emp (map (wx_to_wavedata sh) wx)))).
-- autorewrite with sublist. simpl seq.foldl. entailer!!.
--
-set (j' := Ordinal  (getBG_col Nfr Nbg (Ordinal Hk))) in *.
-assert (Hi: Datatypes.is_true (ssrnat.leq (S (Z.to_nat i)) (S (Nb)))) by admit.
-set (i' := Ordinal Hi).
-forward_densematn_get (map_mx Some BG) i' j' Bp sh (BG i' j').
- entailer!!. simpl. rewrite (Z2Nat.id i) by lia. rewrite (Z2Nat.id k) by lia. rewrite Z2Nat.id; auto.
-pose proof (bg_col_is Nbg H Hk). fold j' in H1.
-apply Float_to_int_e in H1.
-change Float.div with (@BDIV _ Tdouble) in H1.
-change Float.mul with (@BMULT _ Tdouble) in H1.
-rewrite !Float_of_int_e in H1 by rep_lia.
-rewrite Int.signed_repr in H1 by rep_lia.
-change (fprec Tdouble) with 53.
-rewrite (Binary_Btrunc_Zoffloat _ _ H1). lia.
-unfold map_mx; rewrite mxE; auto.
-destruct (iteri_upto i) as [θw' [energy'  diff_sum']] eqn:?H.
-simpl fst; simpl snd.
-set (ew := map (fun f: matrix (ftype Tdouble) (S Nb) 1%nat => fun_of_matrix f i' ord0) (map (waveform dt (Ordinal Hk)) (θw'' i))).
-
+unfold synthesize_w_loop.
 forward_for_simple_bound (Zlength wx) (EX w:Z,
    PROP ( )
    LOCAL (temp _a (Vfloat (seq.foldl BPLUS (BG i' j') (sublist 0 w ew))); temp _i (Vint (Int.repr i));
@@ -403,12 +314,15 @@ assert (forall j, map snd (fst (iteri_upto j)) = map fst wx). {
  unfold seq.foldr; fold (seq.foldr f (θw,ab) l).
  destruct (seq.foldr f _ _) as [? [? ?]].
  rewrite <-IHl.
- clear.
- simpl. 
- repeat destruct (eqtype.eq_op _ _); simpl; auto;
- change @seq.map with @map;
- rewrite !map_map; f_equal.
- extensionality z. destruct z. simpl. auto.
+ clear - Hk0.
+ simpl.
+ repeat destruct (eqtype.eq_op _ _); simpl;
+ change @seq.map with @map; auto.
+ rewrite map_map. simpl. f_equal.
+ unfold updateθ.
+ rewrite map_map. f_equal.
+ extensionality xy. destruct xy as [v w].
+ destruct v; auto. 
 }
 
 assert (Hθ': map snd θw' = map fst wx) by (specialize (H4 i); rewrite H1 in H4; auto).
@@ -621,9 +535,186 @@ lia.
 forward.
 admit.
 admit.
-+ 
- (* after the w-loop *)
++
+assert (Zlength (θw'' i) = Zlength wx) by admit. (* already proved elsewhere *)
+assert (Zlength θw' = Zlength wx) by admit. (* already proved elsewhere *)
+entailer!!.
+f_equal. f_equal. subst ew.
+rewrite map_map, sublist_map.
+f_equal.
+list_solve.
+apply derives_refl'; f_equal.
+list_solve.
+Admitted.
+
+Lemma semax_synthesize_i_loop:
+ forall {Espec: OracleKind}  Nfr Nb Nbg dt (BG :  'M[ftype Tdouble]_(S Nb,S Nbg)) 
+          (X:  'M[ftype Tdouble]_(S Nb, S Nfr)) 
+         (Xp Bp  p v_theta: val) sh (k: Z) (wx : list (Wave.t * (val * val * val)))
+ (SH : readable_share sh)
+ (Hfr : Z.of_nat (S Nb * S Nfr) <= Int.max_signed)
+ (Hbg : Z.of_nat (S Nb * S Nbg) <= Int.max_signed)
+ (Hwx : Zlength wx <= MAXW)
+ (H : 0 <= k < Z.of_nat (S Nfr))
+ (Hk : Datatypes.is_true (ssrnat.leq (S (Z.to_nat k)) (S Nfr))),
+let FR1 := @abbreviate _ 
+  (map
+    (fun i : nat =>
+     freezer.my_nth i
+       [data_at_ Tsh (tarray tdouble MAXW) v_theta;
+        data_at sh tdata
+          (Xp,
+           (Bp,
+            (Vint (Int.repr (Z.of_nat (S Nb))),
+             (Vint (Int.repr (Z.of_nat (S Nfr))),
+              (Vint (Int.repr (Z.of_nat (S Nbg))),
+               (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength (map fst wx))))))))))
+          p;
+        densematn sh (map_mx Some X) Xp;
+        densematn sh (map_mx Some BG) Bp;
+        fold_right sepcon emp (map (wx_to_wavedata sh) wx)]
+       emp)
+    (map Z.to_nat [1])) in 
+semax (func_tycontext f_synthesize Vprog Gprog nil)
+  (PROP ( )
+   LOCAL (
+    temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord (Ordinal (getBG_col Nfr Nbg (Ordinal Hk)))))));
+   temp _k (Vint (Int.repr k));
+   temp _energy (Vfloat (fst (snd (iterk dt BG X (map fst wx) (Z.to_nat k)))));
+   temp _diff_sum (Vfloat (snd (snd (iterk dt BG X (map fst wx) (Z.to_nat k))))); 
+   temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
+   temp _Nbg (Vint (Int.repr (S Nbg))); temp _Nfr (Vint (Int.repr (S Nfr)));
+   temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength (map fst wx))));
+   lvar _theta (tarray tdouble  MAXW) v_theta; temp _data p)
+   SEP (FRZL FR1;
+   data_at Tsh (tarray tdouble MAXW)
+       (map fst (fst (iterk dt BG X (map fst wx) (Z.to_nat k))) ++
+      Zrepeat Vundef (MAXW - Zlength wx))
+     v_theta;
+   densematn sh (map_mx Some X) Xp; densematn sh (map_mx Some BG) Bp;
+   fold_right sepcon emp (map (wx_to_wavedata sh) wx)))
+  synthesize_i_loop
+  (normal_ret_assert
+     (PROP ( )
+      LOCAL (
+       temp _k (Vint (Int.repr k));
+       temp _energy (Vfloat (fst (snd (iterk dt BG X (map fst wx) (Z.to_nat (k + 1))))));
+       temp _diff_sum (Vfloat (snd (snd (iterk dt BG X (map fst wx) (Z.to_nat (k + 1)))))); 
+       temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
+       temp _Nbg (Vint (Int.repr (S Nbg))); temp _Nfr (Vint (Int.repr (S Nfr)));
+       temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength (map fst wx))));
+       lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
+      SEP (FRZL FR1;
+      data_at Tsh (tarray tdouble MAXW)
+        (map fst (fst (iterk dt BG X (map fst wx) (Z.to_nat (k + 1)))) ++
+         Zrepeat Vundef (MAXW - Zlength wx))
+        v_theta;
+      densematn sh (map_mx Some X) Xp; densematn sh (map_mx Some BG) Bp;
+      fold_right sepcon emp (map (wx_to_wavedata sh) wx)))).
+Proof.
+intros.
+rewrite Zlength_map.
+assert (Hbgcol :=bg_col_range Nfr Nbg (Ordinal Hk)).
+unfold iterk.
+replace (Z.to_nat (k+1)) with (Z.to_nat k + 1)%nat by lia.
+rewrite <- firstn_app.
+change (@app ('I_(S Nfr))) with (@seq.cat ('I_(S Nfr))).
+rewrite seq.foldl_cat.
+set (u := seq.foldl _ _ (firstn (Z.to_nat k) (ord_enum (S Nfr)))).
+assert (Hθ: map snd (fst u) = map fst wx). {
+ forget (firstn (Z.to_nat k) (ord_enum (S Nfr))) as L.
+ clear; subst u.
+ unfold initial_values.
+ change @seq.map with @map.
+ rewrite map_map.
+ rewrite <- (seq.revK L). rewrite seq.foldl_rev.
+ induction (seq.rev L); simpl.
+ rewrite !map_map. simpl. f_equal. rewrite <- IHl; clear IHl.
+ destruct (seq.foldr _ _ _). simpl in *. destruct p; simpl.
+ destruct (eqtype.eq_op _ _);
+ rewrite !map_map; f_equal.
+ extensionality x. destruct x; simpl; auto.
+}
+destruct u as [θw [energy diff_sum]] eqn:?H.
+assert (Hk0: k <> 0 -> Forall (is_float oo fst) θw). {
+ intro; subst u.
+ destruct (Z.to_nat k) eqn:?H; [ lia | ].
+ clear - H0. simpl in H0.
+ destruct (ord_enum (S (Nfr))) eqn:?H.
+ pose proof (mv_mathcomp.size_ord_enum (S Nfr)).  rewrite H in H1; inv H1. 
+ admit. (* looks fine *)
+}
+clearbody u. clear H0 u. 
+simpl in Hθ.
+replace (firstn 1 (skipn (Z.to_nat k) (ord_enum (S Nfr)))) with [@Znth _ ord0 k (ord_enum (S Nfr))].
+2:{
+change 1%nat with (Z.to_nat 1).
+rewrite <- sublist_firstn.
+rewrite <- sublist_skip by lia.
+assert (Zlength (ord_enum (S Nfr)) = Z.of_nat (S Nfr)).
+rewrite Zlength_correct, mv_mathcomp.size_ord_enum; auto.
+autorewrite with sublist.
+symmetry; apply sublist_one; try lia.
+}
+change (seq.foldl ?A ?B [?C]) with (A B C).
+rewrite (Znth_ord_enum Hk) by lia; auto.
+change (snd (?A,?B)) with B.
+repeat change (fst (?A,?B)) with A.
+rewrite <- all_iteri.
+unfold synthesize_i_loop.
+abbreviate_semax.
+set (iteri_upto i := seq.foldl (one_iteri dt BG X (Ordinal Hk)) (θw, (energy, diff_sum)) (sublist 0 i (ord_enum (S Nb)))).
+set (θw'' i := fst (iteri_upto (i+1))).
+forward_for_simple_bound (Z.of_nat (S Nb)) (EX i:Z,
+     (PROP ( )
+      LOCAL (
+       temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord (Ordinal (getBG_col Nfr Nbg (Ordinal Hk)))))));
+      temp _k (Vint (Int.repr k));
+      temp _energy
+        (Vfloat (fst (snd (iteri_upto i))));
+      temp _diff_sum (Vfloat (snd (snd (iteri_upto i))));
+      temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
+      temp _Nbg (Vint (Int.repr (Z.of_nat (S Nbg)))); temp _Nfr (Vint (Int.repr (Z.of_nat (S Nfr))));
+      temp _Nb (Vint (Int.repr (Z.of_nat (S Nb)))); temp _Nw (Vint (Int.repr (Zlength wx)));
+      lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
+      SEP (FRZL FR1;
+      data_at Tsh (tarray tdouble MAXW)
+        (map fst (fst (iteri_upto i)) ++ Zrepeat Vundef (MAXW - Zlength wx))
+        v_theta;
+      densematn sh (map_mx Some X) Xp; densematn sh (map_mx Some BG) Bp;
+      fold_right sepcon emp (map (wx_to_wavedata sh) wx)))).
+- autorewrite with sublist. simpl seq.foldl. entailer!!.
+-
+set (j' := Ordinal  (getBG_col Nfr Nbg (Ordinal Hk))) in *.
+assert (Hi: Datatypes.is_true (ssrnat.leq (S (Z.to_nat i)) (S (Nb)))) by admit.
+set (i' := Ordinal Hi).
+forward_densematn_get (map_mx Some BG) i' j' Bp sh (BG i' j').
+ entailer!!. simpl. rewrite (Z2Nat.id i) by lia. rewrite (Z2Nat.id k) by lia. rewrite Z2Nat.id; auto.
+pose proof (bg_col_is Nbg H Hk). fold j' in H1.
+apply Float_to_int_e in H1.
+change Float.div with (@BDIV _ Tdouble) in H1.
+change Float.mul with (@BMULT _ Tdouble) in H1.
+rewrite !Float_of_int_e in H1 by rep_lia.
+rewrite Int.signed_repr in H1 by rep_lia.
+change (fprec Tdouble) with 53.
+rewrite (Binary_Btrunc_Zoffloat _ _ H1). lia.
+unfold map_mx; rewrite mxE; auto.
+destruct (iteri_upto i) as [θw' [energy'  diff_sum']] eqn:?H.
+simpl fst; simpl snd.
+set (ew := map (fun f: matrix (ftype Tdouble) (S Nb) 1%nat => fun_of_matrix f i' ord0) (map (waveform dt (Ordinal Hk)) (θw'' i))).
+eapply semax_seq.
++
+apply semax_synthesize_w_loop; auto.
+assumption.
+rewrite <- H1; reflexivity.
++
 admit.
+-
+unfold iteri_upto.
+pose proof (Zlength_ord_enum (S Nb)).
+rewrite (sublist_same 0 (Z.of_nat (S Nb))) by list_solve.
+entailer!!.
+all: fail.
 Admitted.
 
 Lemma body_synthesize: semax_body Vprog Gprog f_synthesize synthesize_spec.
