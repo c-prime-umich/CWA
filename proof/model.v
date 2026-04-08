@@ -31,7 +31,8 @@ Record t := {
    A: 'rV[ftype Tdouble]_N.+1;
    σ: 'rV[ftype Tdouble]_N.+1;
    v: 'rV[ftype Tdouble]_N.+1;
-   θ0: ftype Tdouble
+   θ0: ftype Tdouble;
+   Hn: Z.of_nat (N.+1) <= Int.max_signed
 }.
 End Wave. 
 
@@ -43,7 +44,9 @@ Record t := {
   dt: ftype Tdouble;
   X: 'M[ftype Tdouble]_(Nb.+1,Nfr.+1);
   BG: 'M[ftype Tdouble]_(Nb.+1,Nbg.+1);
-  waves: seq Wave.t
+  waves: seq Wave.t;
+  Hfr: Z.of_nat (Nb.+1 * Nfr.+1) <= Int.max_signed;
+  Hbg: Z.of_nat (Nb.+1 * Nbg.+1) <= Int.max_signed
 }.
 End Data.
  
@@ -68,59 +71,151 @@ Definition range2pi (x: ftype Tdouble) : ftype Tdouble :=
 Definition wrap (x: ftype Tdouble) : ftype Tdouble :=
    BMINUS (range2pi (BPLUS x M_PI)) M_PI.
 
+Lemma Btrunc_range_pos: forall (lo hi: Z) (x: ftype Tdouble),
+  (Int.min_signed <= lo)%Z ->
+  (hi <= Int.max_signed)%Z ->
+  (Zconst Tdouble lo <= x <= Zconst Tdouble Int.max_signed)%F64 ->
+  Binary.is_finite x = true ->
+  (lo <= Binary.Btrunc _ _ x < hi)%Z.
+Admitted.
+
+Lemma interpolate_range: forall [Nfr Nbg: nat]
+    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (H1: Z.of_nat (S Nbg) <= Int.max_signed)
+   (k: 'I_Nfr.+1),
+  let j := BMULT (BDIV (Zconst Tdouble (Z.of_nat k)) (Zconst Tdouble (Z.of_nat Nfr))) (Zconst Tdouble (Z.of_nat Nbg)) in
+  Binary.is_finite j = true /\   (0 <= j <= Zconst Tdouble (Z.of_nat Nbg))%F64.
+Admitted.
+
 Definition interp_aux (n Nfr: nat) (k: nat) : nat :=
   Z.to_nat (Binary.Btrunc _ _ (BFLOOR (BMULT (BDIV (Zconst _ (Z.of_nat k)) (Zconst _ (Z.of_nat Nfr))) 
                                                                (Zconst Tdouble (Z.of_nat n))))).
 
-Lemma interp_aux1: forall n Nfr (k: 'I_Nfr.+1), is_true (leq (S (interp_aux n Nfr k)) (n.+1)).
+Lemma Fle_trans: forall [t] (x y z: ftype t),
+     is_true (BCMP Gt false x y) -> 
+     is_true (BCMP Gt false y z) -> 
+     is_true (BCMP Gt false x z).
 Admitted.
 
-Definition interpolate [n Nfr: nat] (y: 'rV[ftype Tdouble]_n.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
+Lemma Fle_Zconst: forall [t] (i j: Z), (i <= j)%Z -> is_true (BCMP Gt false (Zconst t i) (Zconst t j)).
+Admitted.
+
+
+Lemma BFLOOR_le: forall (x: ftype Tdouble), is_true (Binary.is_finite x) -> is_true (BCMP Gt false (BFLOOR x) x).
+Admitted.
+
+
+Lemma BFLOOR_le': forall (i: Z) (x: ftype Tdouble), is_true (Binary.is_finite x) -> is_true (Zconst Tdouble i <= x)%F64 ->
+   is_true (Zconst Tdouble i <= BFLOOR x)%F64.
+Admitted.
+
+Lemma BFLOOR_finite: forall x, is_true (Binary.is_finite x) -> is_true (Binary.is_finite (BFLOOR x)).
+Admitted.
+
+Lemma interp_aux1: forall [Nfr n]  (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn: Z.of_nat (n.+1) <= Int.max_signed) (k: 'I_Nfr.+1) ,
+    is_true (leq (S (interp_aux n Nfr k)) (n.+1)).
+Proof.
+intros.
+unfold interp_aux.
+set (x := BMULT _ _).
+destruct (interpolate_range Hfr Hn k).
+fold x in H,H0. destruct H0. clearbody x.
+pose proof Btrunc_range_pos 0 (Z.of_nat n.+1) (BFLOOR x) ltac:(rep_lia) ltac:(rep_lia).
+spec H2; [ split | ].
+-
+clear - H H0.
+apply BFLOOR_le'; auto.
+-
+apply Fle_trans with x; auto.
+apply BFLOOR_le; auto.
+apply Fle_trans with (Zconst Tdouble (Z.of_nat n)); auto.
+apply Fle_Zconst.
+clear - Hn. lia.
+-
+spec H2. apply BFLOOR_finite; auto.
+lia.
+Qed.
+
+Definition interpolate [n Nfr: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn: Z.of_nat (n.+1) <= Int.max_signed)  (y: 'rV[ftype Tdouble]_n.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
   let a := BMULT (BDIV (Zconst _ (Z.of_nat k)) (Zconst _ (Z.of_nat Nfr))) (Zconst Tdouble (Z.of_nat n)) in
   let j := Binary.Btrunc _ _ (BFLOOR a) in
-  let j' := @Ordinal n.+1 (Z.to_nat j) (interp_aux1 n Nfr k) in
+  let j' := @Ordinal n.+1 (Z.to_nat j) (interp_aux1 Hfr Hn k) in
   (if  (Z.to_nat (j + 1) < n.+1)%N as b return (leq (S (Z.to_nat (j + 1))) n.+1 = b -> ftype Tdouble)
    then fun H0 :  (Z.to_nat (j + 1) < n.+1)%N = true => ((Zconst _ (j+1) - a) * y ord0 j' + (a-Zconst _ j) * y ord0 (Ordinal H0))%F64
    else fun=> y ord0 j') erefl.
 
-Lemma getBG_col: forall (Nfr Nbg: nat)  (k: 'I_Nfr.+1),
+Lemma getBG_col: forall [Nfr Nbg: nat]
+    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (H1: Z.of_nat (S Nbg) <= Int.max_signed)
+   (k: 'I_Nfr.+1),
+  let j := BMULT (BDIV (Zconst Tdouble (Z.of_nat k)) (Zconst Tdouble (Z.of_nat Nfr))) (Zconst Tdouble (Z.of_nat Nbg)) in
+  is_true (Binary.is_finite j) /\ (0 <= j <= Zconst Tdouble (Z.of_nat Nbg))%F64.
+Proof.
+intros.
+eapply interpolate_range; auto.
+Qed.
+
+Lemma getBG_col': forall [Nfr Nbg: nat]
+    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (H1: Z.of_nat (S Nbg) <= Int.max_signed)
+    (k: 'I_Nfr.+1),
   let j := BMULT (BDIV (Zconst Tdouble (Z.of_nat k)) (Zconst Tdouble (Z.of_nat Nfr))) (Zconst Tdouble (Z.of_nat Nbg)) in
   let c := Z.to_nat (Binary.Btrunc _ _ j) in
   is_true (c < Nbg.+1)%N.
-Admitted.
+Proof.
+intros.
+destruct (interpolate_range H0 H1 k) as [Hj ?H].
+fold j in Hj,H.
+clearbody j.
+pose proof (Btrunc_range_pos 0 (Z.of_nat Nbg) j ltac:(rep_lia) ltac:(rep_lia)).
+subst c.
+set (i := Binary.Btrunc _ _ j) in H,H2|-*. clearbody i.
+destruct H.
+spec H2; [ | lia].
+split; auto.
+clear - H3 H1.
+eapply Fle_trans; try eassumption.
+apply Fle_Zconst.
+lia.
+Qed.
 
 Definition Bexp : ftype Tdouble -> ftype Tdouble := FPCore.ff_func VSTlib.spec_math.MF.exp.
 
-Definition waveform [Nfr Nb: nat] (dt: ftype Tdouble) (k: 'I_Nfr.+1)  (θw: Values.val * Wave.t) : 'cV[ftype Tdouble]_Nb.+1 :=
+Definition waveform [Nfr Nb: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hnb: Z.of_nat (Nb.+1) <= Int.max_signed) 
+     (dt: ftype Tdouble) (k: 'I_Nfr.+1)  (θw: Values.val * Wave.t) : 'cV[ftype Tdouble]_Nb.+1 :=
  match θw with
  | (Vfloat θ, w) => 
-  let A := interpolate (Wave.A w) k in
-  let σ := interpolate (Wave.σ w) k in
+  let A := interpolate Hfr (Wave.Hn w) (Wave.A w) k in
+  let σ := interpolate Hfr (Wave.Hn w) (Wave.σ w) k in
   \col_i 
    let dx := wrap (BMINUS (BMULT (Zconst Tdouble (Z.of_nat i)) (BDIV L (Zconst _ (Z.of_nat Nb.+1)))) θ) in
      BMULT A (Bexp (BOPP (BDIV (BMULT dx dx) (BMULT (Zconst _ 2) (BMULT σ σ)))))
  | _ => const_mx (Zconst _ 0)
  end.
  
-Definition updateθ [Nfr: nat] (k: 'I_Nfr.+1) (dt: ftype Tdouble) (θw: Values.val * Wave.t) : Values.val * Wave.t :=
+Definition updateθ [Nfr: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed)  (k: 'I_Nfr.+1) (dt: ftype Tdouble) (θw: Values.val * Wave.t) : Values.val * Wave.t :=
  match θw with
  | (Vfloat θ, w) =>
-  let v := interpolate (Wave.v w) (@inord Nfr (k-1)%N) in
+  let v := interpolate  Hfr (Wave.Hn w) (Wave.v w) (@inord Nfr (k-1)%N) in
    (Vfloat (range2pi (@BPLUS _ Tdouble θ (BMULT v dt))), w)
  | (_, w) => (Vundef, w)
  end.
 
-Definition one_iterk  [Nfr Nb Nbg : nat] (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
+Definition one_iterk  [Nfr Nb Nbg : nat] 
+    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (Hb: Z.of_nat (S Nb) <= Int.max_signed)
+    (H1: Z.of_nat (S Nbg) <= Int.max_signed) 
+   (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
           (X:  'M[ftype Tdouble]_(Nb.+1,Nfr.+1)) :
      (list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)) ->
       ('I_Nfr.+1) ->
      (list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)) :=
 fun '(θw, (energy, diff_sum)) k =>
-  let e_bg := col (Ordinal  (getBG_col Nfr Nbg k)) BG
+  let e_bg := col (Ordinal  (getBG_col' H0 H1 k)) BG
   in let θw' := if k==ord0 
                  then map (fun w => (Vfloat (Wave.θ0 (snd w)), snd w)) θw
-                 else map (updateθ k dt) θw
-  in let ew := map (waveform dt k) θw'
+                 else map (updateθ H0 k dt) θw
+  in let ew := map (waveform H0 Hb dt k) θw'
   in let e := foldl (F.addmx (n:=1)) e_bg ew
   in let energy' := foldl BPLUS energy (map (fun j => BABS (X j k)) (ord_enum Nb.+1))
   in let d' := foldl BPLUS diff_sum (map (fun j => BABS (BMINUS (X j k) (e j ord0))) (ord_enum Nb.+1))
@@ -138,10 +233,14 @@ Qed.
 Definition initial_values (waves: list Wave.t) :  (list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)) :=
  (map (fun w => (Vundef, w)) waves, (Zconst _ 0, Zconst _ 0)).
 
-Definition iterk [Nfr Nb Nbg : nat] (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
+Definition iterk [Nfr Nb Nbg : nat] 
+    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (Hb: Z.of_nat (S Nb) <= Int.max_signed)
+    (H1: Z.of_nat (S Nbg) <= Int.max_signed)
+   (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
           (X:  'M[ftype Tdouble]_(Nb.+1,Nfr.+1)) (waves: list Wave.t) (k: nat) : 
      (list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)) :=
- foldl (one_iterk dt BG X) (initial_values waves) (firstn k (ord_enum Nfr.+1)).
+ foldl (one_iterk H0 Hb H1 dt BG X) (initial_values waves) (firstn k (ord_enum Nfr.+1)).
 
 Lemma forallb_rev: forall {A} (f: A -> bool) (al: list A), forallb f (rev al) = forallb f al.
 induction al.
@@ -154,7 +253,11 @@ simpl.
 destruct (forallb f al), (f a); tauto.
 Qed.
 
-Definition one_iteri  [Nfr Nb Nbg : nat] (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
+Definition one_iteri  [Nfr Nb Nbg : nat] 
+    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (Hb: Z.of_nat (S Nb) <= Int.max_signed)
+    (H1: Z.of_nat (S Nbg) <= Int.max_signed)
+    (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
           (X:  'M[ftype Tdouble]_(Nb.+1,Nfr.+1)) (k: 'I_Nfr.+1) :
      (list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)) -> 'I_Nb.+1 ->
      (list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)) :=
@@ -162,19 +265,23 @@ Definition one_iteri  [Nfr Nb Nbg : nat] (dt: ftype Tdouble) (BG :  'M[ftype Tdo
    let θw' := if i==ord0
                    then if k==ord0 
                          then map (fun w => (Vfloat (Wave.θ0 (snd w)), snd w)) θw
-                         else map (updateθ k dt) θw
+                         else map (updateθ H0 k dt) θw
                    else θw
-    in let ew : seq (ftype Tdouble) := map (fun f: 'cV_Nb.+1 => f i ord0) (map (waveform dt k) θw') 
-    in let e_bg := BG i (Ordinal (getBG_col Nfr Nbg k))
+    in let ew : seq (ftype Tdouble) := map (fun f: 'cV_Nb.+1 => f i ord0) (map (waveform H0 Hb dt k) θw') 
+    in let e_bg := BG i (Ordinal (getBG_col' H0 H1 k))
     in let e : ftype Tdouble:= foldl BPLUS e_bg ew
     in let Xik := X i k
     in let energy' := BPLUS energy (BABS Xik)
     in let d' := BPLUS diff_sum (BABS (BMINUS Xik e))
     in (θw', (energy', d')).
 
-Definition all_iteri: forall  [Nfr Nb Nbg : nat] (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
+Definition all_iteri: forall  [Nfr Nb Nbg : nat] 
+    (Hfr: Z.of_nat (S Nfr) <= Int.max_signed)
+    (Hb: Z.of_nat (S Nb) <= Int.max_signed)
+    (Hbg: Z.of_nat (S Nbg) <= Int.max_signed)
+    (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
           (X:  'M[ftype Tdouble]_(Nb.+1,Nfr.+1)) (k: 'I_Nfr.+1) (state: list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)),
-   foldl (one_iteri dt BG X k) state (ord_enum Nb.+1) = one_iterk dt BG X state k.
+   foldl (one_iteri Hfr Hb Hbg dt BG X k) state (ord_enum Nb.+1) = one_iterk Hfr Hb Hbg dt BG X state k.
 Proof.
 intros.
 unfold one_iterk.
@@ -199,10 +306,10 @@ rewrite eq_refl.
 clear H.
 fold u.
 set e1 := BPLUS energy _. clearbody e1.
-set f := map (waveform _ _) _.
-replace (fun_of_matrix (foldl (F.addmx (n:=1)) (col (Ordinal (getBG_col Nfr Nbg k)) BG) f)
+set f := map (waveform _ _ _ _) _.
+replace (fun_of_matrix (foldl (F.addmx (n:=1)) (col (Ordinal (getBG_col' Hfr Hbg k)) BG) f)
           ord0 ord0)
- with (foldl BPLUS (fun_of_matrix BG ord0 (Ordinal (getBG_col Nfr Nbg k)))
+ with (foldl BPLUS (fun_of_matrix BG ord0 (Ordinal (getBG_col' Hfr Hbg k)))
                        (map
                           (fun f0 : matrix (ftype Tdouble) (S Nb) 1 =>
                            fun_of_matrix f0 ord0 ord0)
@@ -246,10 +353,16 @@ clearbody r.
 induction r; rewrite ?mxE // -IHr //.
 Qed.
 
+Lemma N_range: forall [Nb N] (H: Z.of_nat (S Nb * S N) <= Int.max_signed),
+        Z.of_nat (S N) <= Int.max_signed.
+Proof. rep_lia. Qed.
+
+Lemma N_range1: forall [Nb N] (H: Z.of_nat (S Nb * S N) <= Int.max_signed),
+        Z.of_nat (S Nb) <= Int.max_signed.
+Proof. rep_lia. Qed.
+
 Definition synth_err (d: Data.t) : ftype Tdouble :=
- let '{| Data.Nb := Nb; Data.Nfr := Nfr; Data.Nbg := Nbg; Data.dt := dt; 
-          Data.X := X; Data.BG := BG; Data.waves := waves |} := d in
-  let '(_, (energy, diff_sum)) := iterk dt BG X waves Nfr.+1
+  let '(_, (energy, diff_sum)) := iterk (N_range (Data.Hfr d)) (N_range1 (Data.Hfr d)) (N_range (Data.Hbg d)) (Data.dt d) (Data.BG d) (Data.X d) (Data.waves d) (Data.Nfr d).+1
    in  (diff_sum / energy)%F64.
 
 

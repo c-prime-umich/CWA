@@ -136,14 +136,15 @@ Definition wrap_spec :=
 
 Definition interpolate_spec :=
   DECLARE _interpolate
-  WITH sh: share, Y: {Nt: nat &  'rV[ftype Tdouble]_(S Nt)}, yp: val, K: {Nfr & 'I_(S Nfr)}
-  PRE [ tint, tint, tptr tdouble, tdouble ] let (Nt,y) := Y in let (Nfr,k) := K in 
+  WITH sh: share, Y: {Nt: nat &  ((Z.of_nat (S Nt) <= Int.max_signed) * 'rV[ftype Tdouble]_(S Nt))}, 
+    yp: val, K: {Nfr & ((Z.of_nat (S Nfr) <= Int.max_signed) * 'I_(S Nfr))}
+  PRE [ tint, tint, tptr tdouble, tdouble ] let (Nt,Hty) := Y in let '(Ht,y):=Hty in let (Nfr,Hfrk) := K in let '(Hfr,k) := Hfrk in  
     PROP (readable_share sh)
     PARAMS (Vint (Int.repr(S Nfr)); Vint (Int.repr(S Nt)); yp; Vfloat (Zconst Tdouble (nat_of_ord k)))
     SEP(densematn sh (map_mx Some y) yp)
-  POST [ tdouble ] let (Nt,y) := Y in let (Nfr,k) := K in 
+  POST [ tdouble ] let (Nt,Hty) := Y in let '(Ht,y):=Hty in let (Nfr,Hfrk) := K in let '(Hfr,k) := Hfrk in  
     PROP ()
-    RETURN (Vfloat (interpolate y k))
+    RETURN (Vfloat (interpolate Hfr Ht y k) )
     SEP(densematn sh (map_mx Some y) yp).
 
 Definition synthesize_spec :=
