@@ -95,11 +95,99 @@ Lemma Fle_trans: forall [t] (x y z: ftype t),
      is_true (BCMP Gt false x y) -> 
      is_true (BCMP Gt false y z) -> 
      is_true (BCMP Gt false x z).
-Admitted.
+Proof.
+intros.
+unfold BCMP in *.
+destruct x; try destruct s; try discriminate;
+destruct y; try destruct s; try discriminate;
+destruct z; try destruct s; try discriminate; auto;
+unfold extend_comp in *;
+unfold Binary.Bcompare,BinarySingleNaN.Bcompare, BinarySingleNaN.B2SF, Binary.B2BSN, SpecFloat.SFcompare in *;
+unfold CompOpp in *;
+destruct (e ?= e3) eqn:?H; auto;
+try apply Z.compare_eq in H1; subst.
+-
+destruct (e3?= e1) eqn:H2; auto;
+try apply Z.compare_eq in H2; subst.
++
+rewrite Z.compare_refl in H0.
+destruct (PosDef.Pos.compare_cont Eq m m1) eqn:H1; auto.
+apply nat_of_P_lt_Lt_compare_morphism in H1.
+destruct (PosDef.Pos.compare_cont Eq m m0) eqn:H2.
+*
+apply Pcompare_Eq_eq in H2; subst.
+rewrite nat_of_P_lt_Lt_compare_complement_morphism in H0; auto.
+*
+apply nat_of_P_lt_Lt_compare_morphism in H2; auto.
+*
+apply nat_of_P_gt_Gt_compare_morphism in H2.
+destruct (PosDef.Pos.compare_cont Eq m0 m1) eqn:H3; try discriminate.
+apply Pcompare_Eq_eq in H3; subst; lia.
+apply nat_of_P_gt_Gt_compare_morphism in H3.
+lia.
++
+destruct (PosDef.Pos.compare_cont Eq m m1) eqn:H3; try discriminate; auto.
+apply nat_of_P_lt_Lt_compare_morphism in H3.
+destruct (IntDef.Z.compare e1 e3) eqn:?H; try discriminate.
+try apply Z.compare_eq in H1; subst.
+rewrite Z.compare_refl in H2; discriminate.
+rewrite Z.compare_gt_iff in H2.
+rewrite Z.compare_gt_iff in H1. lia.
+-
+destruct (IntDef.Z.compare e1 e3) eqn:?H; try discriminate.
+apply Z.compare_eq in H2; subst.
+destruct (IntDef.Z.compare e e3) eqn:?H; try discriminate.
+destruct (IntDef.Z.compare e e1) eqn:?H; try discriminate.
+apply Z.compare_eq in H3; subst.
+congruence.
+pose proof Zcompare_Gt_trans _ _ _ H3 H2.
+congruence.
+-
+destruct (IntDef.Z.compare e1 e3) eqn:?H; try discriminate.
+apply Z.compare_eq in H1; subst.
+rewrite Z.compare_refl in H.
+destruct (PosDef.Pos.compare_cont Eq m m1) eqn:H3; try discriminate; auto.
+destruct (PosDef.Pos.compare_cont Eq m m0) eqn:H4; try discriminate; auto.
+apply Pcompare_Eq_eq in H4; subst.
+rewrite H3 in H0. discriminate.
+destruct (PosDef.Pos.compare_cont Eq m0 m1) eqn:H5; try discriminate; auto.
+apply Pcompare_Eq_eq in H5; subst.
+congruence.
+apply nat_of_P_lt_Lt_compare_morphism in H5,H4.
+apply nat_of_P_gt_Gt_compare_morphism in H3.
+lia.
+destruct (IntDef.Z.compare e3 e1) eqn:?H; try discriminate.
+apply Z.compare_eq in H2; subst.
+rewrite Z.compare_refl in H1; discriminate.
+pose proof Zcompare_Lt_trans _ _ _ H1 H2.
+rewrite Z.compare_refl in H3. inv H3.
+-
+destruct (IntDef.Z.compare e1 e3) eqn:?H; try discriminate.
+apply Z.compare_eq in H2; subst.
+rewrite H1 in H.
+destruct (PosDef.Pos.compare_cont Eq m0 m1) eqn:H5; try discriminate; auto.
+destruct (IntDef.Z.compare e e1) eqn:?H; try discriminate.
+apply Z.compare_eq in H3; subst.
+congruence.
+pose proof Zcompare_Lt_trans _ _ _ H3 H2.
+congruence.
+Qed.
 
-Lemma Fle_Zconst: forall [t] (i j: Z), (i <= j)%Z -> is_true (BCMP Gt false (Zconst t i) (Zconst t j)).
-Admitted.
-
+Lemma Fle_Zconst: forall [t] (i j: Z), 
+   (   - 2 ^ (fprec t)  <= i <= j)%Z -> 
+    (j <= 2 ^ (fprec t)) -> 
+ is_true (BCMP Gt false (Zconst t i) (Zconst t j)).
+Proof.
+intros.
+unfold BCMP, Zconst, extend_comp.
+destruct (BofZ_exact  (fprec t) (femax t) (fprec_gt_0 t) (fprec_lt_femax t) i ltac:(lia)) as [? [? ?]].
+destruct (BofZ_exact  (fprec t) (femax t) (fprec_gt_0 t) (fprec_lt_femax t) j ltac:(lia)) as [? [? ?]].
+rewrite (proof_irr (Pos2Z.is_pos (fprecp t)) (fprec_gt_0 t)).
+rewrite Binary.Bcompare_correct; auto.
+rewrite H1 H4.
+rewrite Rcompare_IZR.
+destruct (Z.compare_spec i j); auto. lia.
+Qed.
 
 Lemma BFLOOR_le: forall (x: ftype Tdouble), is_true (Binary.is_finite x) -> is_true (BCMP Gt false (BFLOOR x) x).
 Admitted.
@@ -130,7 +218,7 @@ apply Fle_trans with x; auto.
 apply BFLOOR_le; auto.
 apply Fle_trans with (Zconst Tdouble (Z.of_nat n)); auto.
 apply Fle_Zconst.
-clear - Hn. lia.
+simpl. clear - Hn. lia. simpl. clear. rep_lia.
 -
 spec H2. apply BFLOOR_finite; auto.
 lia.
@@ -145,17 +233,6 @@ Definition interpolate [n Nfr: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn
    else fun=> y ord0 j') erefl.
 
 Lemma getBG_col: forall [Nfr Nbg: nat]
-    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
-    (H1: Z.of_nat (S Nbg) <= Int.max_signed)
-   (k: 'I_Nfr.+1),
-  let j := BMULT (BDIV (Zconst Tdouble (Z.of_nat k)) (Zconst Tdouble (Z.of_nat Nfr))) (Zconst Tdouble (Z.of_nat Nbg)) in
-  is_true (Binary.is_finite j) /\ (0 <= j <= Zconst Tdouble (Z.of_nat Nbg))%F64.
-Proof.
-intros.
-eapply interpolate_range; auto.
-Qed.
-
-Lemma getBG_col': forall [Nfr Nbg: nat]
     (H0: Z.of_nat (S Nfr) <= Int.max_signed)
     (H1: Z.of_nat (S Nbg) <= Int.max_signed)
     (k: 'I_Nfr.+1),
@@ -176,7 +253,9 @@ split; auto.
 clear - H3 H1.
 eapply Fle_trans; try eassumption.
 apply Fle_Zconst.
-lia.
+simpl. lia.
+simpl.
+rep_lia.
 Qed.
 
 Definition Bexp : ftype Tdouble -> ftype Tdouble := FPCore.ff_func VSTlib.spec_math.MF.exp.
@@ -211,7 +290,7 @@ Definition one_iterk  [Nfr Nb Nbg : nat]
       ('I_Nfr.+1) ->
      (list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)) :=
 fun '(θw, (energy, diff_sum)) k =>
-  let e_bg := col (Ordinal  (getBG_col' H0 H1 k)) BG
+  let e_bg := col (Ordinal  (getBG_col H0 H1 k)) BG
   in let θw' := if k==ord0 
                  then map (fun w => (Vfloat (Wave.θ0 (snd w)), snd w)) θw
                  else map (updateθ H0 k dt) θw
@@ -268,7 +347,7 @@ Definition one_iteri  [Nfr Nb Nbg : nat]
                          else map (updateθ H0 k dt) θw
                    else θw
     in let ew : seq (ftype Tdouble) := map (fun f: 'cV_Nb.+1 => f i ord0) (map (waveform H0 Hb dt k) θw') 
-    in let e_bg := BG i (Ordinal (getBG_col' H0 H1 k))
+    in let e_bg := BG i (Ordinal (getBG_col H0 H1 k))
     in let e : ftype Tdouble:= foldl BPLUS e_bg ew
     in let Xik := X i k
     in let energy' := BPLUS energy (BABS Xik)
@@ -307,9 +386,9 @@ clear H.
 fold u.
 set e1 := BPLUS energy _. clearbody e1.
 set f := map (waveform _ _ _ _) _.
-replace (fun_of_matrix (foldl (F.addmx (n:=1)) (col (Ordinal (getBG_col' Hfr Hbg k)) BG) f)
+replace (fun_of_matrix (foldl (F.addmx (n:=1)) (col (Ordinal (getBG_col Hfr Hbg k)) BG) f)
           ord0 ord0)
- with (foldl BPLUS (fun_of_matrix BG ord0 (Ordinal (getBG_col' Hfr Hbg k)))
+ with (foldl BPLUS (fun_of_matrix BG ord0 (Ordinal (getBG_col Hfr Hbg k)))
                        (map
                           (fun f0 : matrix (ftype Tdouble) (S Nb) 1 =>
                            fun_of_matrix f0 ord0 ord0)
