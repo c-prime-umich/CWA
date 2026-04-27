@@ -147,12 +147,135 @@ rewrite mv_mathcomp.nth_ord_enum'.
 auto.
 Qed.
 
+Section FtoInt.
+Import Rdefinitions.
+
+Lemma Float_to_int_i_aux: 
+ forall (x : ftype Tdouble),
+  Binary.is_finite x = true ->
+  Rle (IZR (- (2147483648))) (FT2R x) /\
+  Rle (FT2R x) (IZR (2147483648 - 1)) ->
+  lib.IEEE754_extra.ZofB_range 53 1024 x (- (2147483648)) (2147483648 - 1) =
+  Some (Binary.Btrunc (fprec Tdouble) (femax Tdouble) x).
+Proof.
+intros.
+unfold lib.IEEE754_extra.ZofB_range.
+change lib.IEEE754_extra.ZofB with ZofB.
+destruct x; try discriminate H; try reflexivity.
+clear H.
+rewrite ZofB_correct.
+simpl Binary.is_finite. cbv match.
+unfold FT2R in H0.
+set (x := Binary.B2R _ _ _) in *.
+match goal with |- context [andb ?A ?B] => assert (andb A B = true) end.
+-
+destruct H0.
+rewrite andb_true_iff; split.
++ clear H0. apply Zaux.Zle_bool_true.
+apply Zfloor_lub in H.
+unfold Ztrunc.
+destruct (Rlt_bool x 0) eqn:?H; auto.
+transitivity (Zfloor x); auto.
+destruct (RIneq.Req_dec_T  (IZR (Zfloor x)) x ).
+*
+apply RIneq.le_IZR.
+rewrite e1.
+apply Zceil_ub.
+*
+rewrite Zceil_floor_neq by auto.
+lia.
++
+clear H.  apply Zaux.Zle_bool_true.
+unfold  Ztrunc.
+destruct (Rlt_bool x 0) eqn:?H; auto.
+apply Zceil_glb. auto.
+apply RIneq.le_IZR.
+eapply RIneq.Rle_trans.
+apply Zfloor_lb.
+auto.
+-
+rewrite H.
+f_equal.
+apply RIneq.eq_IZR.
+rewrite Binary.Btrunc_correct by reflexivity.
+fold x.
+rewrite FIX.round_FIX_IZR.
+auto.
+Qed.
+
 Lemma Float_to_int_i: forall x: ftype Tdouble,
   Binary.is_finite x = true ->
-  Rdefinitions.Rle (Rdefinitions.IZR Int.min_signed) (FT2R x) /\
-              Rdefinitions.Rle (FT2R x) (Rdefinitions.IZR Int.max_signed) ->
+  Rle (IZR Int.min_signed) (FT2R x) /\
+              Rle (FT2R x) (IZR Int.max_signed) ->
  Float.to_int x = Some (Int.repr (Binary.Btrunc (fprec Tdouble) (femax Tdouble) x)).
-Admitted.
+Proof.
+intros.
+with_strategy transparent [Float.to_int] unfold Float.to_int.
+unfold Int.min_signed , Int.max_signed in *.
+let z := constr:(Int.half_modulus) in let z' := eval compute in z in change z with z' in *.
+rewrite (Float_to_int_i_aux x H H0).
+auto.
+Qed.
+
+Lemma Binary_Btrunc_Zoffloat: forall x i, Zoffloat x = Some i -> Binary.Btrunc _ _ x = i.
+Proof.
+intros.
+unfold Zoffloat in H.
+destruct x; try discriminate.
+inv H; reflexivity.
+apply RIneq.eq_IZR.
+rewrite Binary.Btrunc_correct by reflexivity.
+rewrite FIX.round_FIX_IZR.
+f_equal.
+simpl.
+unfold Defs.F2R; simpl.
+destruct e; inv H; simpl.
+-
+simpl.
+rewrite RIneq.Rmult_1_r.
+unfold SpecFloat.cond_Zopp.
+unfold Ztrunc.
+destruct s; simpl.
+rewrite Rlt_bool_true.
+apply Zceil_IZR.
+unfold IZR.
+pose proof (RIneq.IPR_gt_0 m); Lra.lra.
+rewrite Rlt_bool_false.
+apply Zfloor_IZR.
+unfold IZR.
+pose proof (RIneq.IPR_gt_0 m); Lra.lra.
+-
+rewrite <- RIneq.mult_IZR.
+rewrite Ztrunc_IZR.
+reflexivity.
+-
+pose proof Zpow_facts.Zpower_pos_pos 2 p ltac:(lia).
+destruct (Z.pow_pos 2 p); try lia. clear H.
+pose proof BinInt.Z.pos_div_eucl_bound m (Z.pos p0) ltac:(lia).
+pose proof Z.pos_div_eucl_eq m (Z.pos p0) ltac:(lia).
+destruct (Z.pos_div_eucl m (Z.pos p0)).
+simpl in H.
+assert (0 <= z) by nia.
+rewrite H0; clear H0 m e0.
+simpl in H.
+destruct s; simpl.
++ rewrite RIneq.opp_IZR. rewrite <- RIneq.Ropp_mult_distr_l. 
+rewrite Ztrunc_opp.
+f_equal.
+etransitivity.
+apply Ztrunc_div.
+lia.
+rewrite Z.quot_add_l; try lia.
+rewrite Z.quot_small; try lia.
++
+etransitivity.
+apply Ztrunc_div.
+lia.
+rewrite Z.quot_add_l; try lia.
+rewrite Z.quot_small; try lia.
+Qed.
+
+End FtoInt.
 
 Lemma bg_col_is: forall [Nfr k] Nbg 
     (H: 0 <= k < Z.of_nat (S Nfr))
@@ -224,8 +347,6 @@ set (u := Z.to_nat _) in *.
 lia.
 Qed.
 
-Lemma Binary_Btrunc_Zoffloat: forall x i, Zoffloat x = Some i -> Binary.Btrunc _ _ x = i.
-Admitted.
 
 Instance InhW : Inhabitant Wave.t := 
   Wave.Build_t O (const_mx (Zconst _ 0))  (const_mx (Zconst _ 0))  (const_mx (Zconst _ 0))  (Zconst _ 0) ltac:(rep_lia).

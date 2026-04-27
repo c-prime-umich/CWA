@@ -53,12 +53,14 @@ End Data.
 Section Floor.
 Import BinarySingleNaN.
 
-Definition BFLOOR (x : Binary.binary_float (fprec Tdouble) (femax Tdouble)) :=
-match x with
-| Binary.B754_finite _ _ s m e _ => BofZ _ _ (fprec_gt_0 Tdouble) (fprec_lt_femax Tdouble) 
-                       (SFnearbyint_binary_aux (fprec Tdouble) mode_DN s m e)
-| _ => x
-end.
+Axiom BFLOOR_nan :
+  sig (fun x : float => eq (Binary.is_nan 53 1024 x) true).
+
+Definition BFLOOR (x : Binary.binary_float (fprec Tdouble) (femax Tdouble)) : Binary.binary_float (fprec Tdouble) (femax Tdouble) 
+  := Binary.BSN2B _ _ BFLOOR_nan
+  (@BinarySingleNaN.Bnearbyint (fprec Tdouble) (femax Tdouble) (fprec_lt_femax Tdouble)  mode_DN 
+   (Binary.B2BSN _ _ x)).
+
 End Floor.
 
 Definition M_PI : ftype Tdouble := 3.141592653589793%F64.
@@ -189,16 +191,97 @@ rewrite Rcompare_IZR.
 destruct (Z.compare_spec i j); auto. lia.
 Qed.
 
-Lemma BFLOOR_le: forall (x: ftype Tdouble), is_true (Binary.is_finite x) -> is_true (BCMP Gt false (BFLOOR x) x).
-Admitted.
+Lemma BFLOOR_le: forall (x: ftype Tdouble), 
+       is_true (Binary.is_finite x) -> is_true (BCMP Gt false (BFLOOR x) x).
+Proof.
+intros.
+unfold BFLOOR.
+unfold BCMP.
+unfold extend_comp.
+unfold Binary.Bcompare.
+pose proof BinarySingleNaN.Bnearbyint_correct _ _ (fprec_lt_femax Tdouble) BinarySingleNaN.mode_DN
+   (Binary.B2BSN (fprec Tdouble) (femax Tdouble) x).
+destruct H0 as [? [? ?]].
+assert (BinarySingleNaN.is_finite (Binary.B2BSN (fprec Tdouble) (femax Tdouble) x) = true).
+destruct x; try discriminate; auto.
+rewrite H3 in H1.
+spec H2.
+destruct (BinarySingleNaN.Bnearbyint BinarySingleNaN.mode_DN _); auto.
+rewrite Binary.B2BSN_BSN2B.
+rewrite BinarySingleNaN.Bcompare_correct; auto.
+rewrite Binary.B2R_B2BSN.
+rewrite H0.
+rewrite FIX.round_FIX_IZR.
+rewrite Binary.B2R_B2BSN.
+unfold BinarySingleNaN.round_mode.
+set (y := Binary.B2R _ _ _).
+pose proof Zfloor_lb y.
+apply Rcompare_not_Gt in H4.
+destruct (Rcompare _ _); try congruence.
+Qed.
 
-
-Lemma BFLOOR_le': forall (i: Z) (x: ftype Tdouble), is_true (Binary.is_finite x) -> is_true (Zconst Tdouble i <= x)%F64 ->
+Lemma BFLOOR_le': forall (i: Z) (x: ftype Tdouble), 
+    is_true (Binary.is_finite x) ->
+    - 2 ^ fprec Tdouble <= i <= 2 ^ fprec Tdouble ->
+    is_true (Zconst Tdouble i <= x)%F64 ->
    is_true (Zconst Tdouble i <= BFLOOR x)%F64.
-Admitted.
+Proof.
+intros * H REPi Hi.
+assert (FINi: is_true (Binary.is_finite (Zconst Tdouble i))) by (apply BofZ_exact; auto).
+unfold BFLOOR.
+unfold BCMP.
+unfold extend_comp.
+unfold Binary.Bcompare.
+pose proof BinarySingleNaN.Bnearbyint_correct _ _ (fprec_lt_femax Tdouble) BinarySingleNaN.mode_DN
+   (Binary.B2BSN (fprec Tdouble) (femax Tdouble) x).
+destruct H0 as [? [? ?]].
+assert (BinarySingleNaN.is_finite (Binary.B2BSN (fprec Tdouble) (femax Tdouble) x) = true).
+destruct x; try discriminate; auto.
+rewrite H3 in H1.
+spec H2.
+destruct (BinarySingleNaN.Bnearbyint BinarySingleNaN.mode_DN _); auto.
+rewrite Binary.B2BSN_BSN2B.
+rewrite BinarySingleNaN.Bcompare_correct; auto.
+2: destruct (Zconst Tdouble i); try discriminate; simpl; auto.
+rewrite Binary.B2R_B2BSN.
+rewrite H0.
+rewrite FIX.round_FIX_IZR.
+rewrite Binary.B2R_B2BSN.
+unfold BinarySingleNaN.round_mode.
+assert (Rdefinitions.Rle (Binary.B2R (fprec Tdouble) (femax Tdouble) (Zconst Tdouble i))
+      (Rdefinitions.IZR (Zfloor (Binary.B2R (fprec Tdouble) (femax Tdouble) x)))).
+2: apply Rcompare_not_Gt in H4; destruct (Rcompare _ _); try congruence.
+assert (Rdefinitions.Rle (Binary.B2R (fprec Tdouble) (femax Tdouble) (Zconst Tdouble i))
+        (Binary.B2R (fprec Tdouble) (femax Tdouble) x)). {
+  unfold BCMP in Hi.
+  unfold extend_comp in Hi.
+  rewrite Binary.Bcompare_correct in Hi; auto.
+  apply Rcompare_not_Gt_inv.
+  destruct (Rcompare _ _); auto; try discriminate.
+}
+clear Hi.
+unfold Zconst in *.
+destruct (BofZ_exact _ _ (fprec_gt_0 Tdouble) (fprec_lt_femax Tdouble) i REPi) as [? _].
+rewrite (proof_irr (Pos2Z.is_pos (fprecp Tdouble) )(fprec_gt_0 Tdouble)) in H4|-*.
+rewrite H5 in H4|-*.
+pose proof Zfloor_lub _ _ H4.
+apply RIneq.IZR_le; auto.
+Qed.
 
 Lemma BFLOOR_finite: forall x, is_true (Binary.is_finite x) -> is_true (Binary.is_finite (BFLOOR x)).
-Admitted.
+Proof.
+intros.
+unfold BFLOOR.
+unfold BCMP.
+unfold extend_comp.
+rewrite Binary.is_finite_BSN2B.
+decompose [and] ( BinarySingleNaN.Bnearbyint_correct _ _ (fprec_lt_femax Tdouble)
+     BinarySingleNaN.mode_DN
+        (Binary.B2BSN (fprec Tdouble) (femax Tdouble) x)).
+rewrite H2.
+rewrite Binary.is_finite_B2BSN.
+auto.
+Qed.
 
 Lemma interp_aux1: forall [Nfr n]  (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn: Z.of_nat (n.+1) <= Int.max_signed) (k: 'I_Nfr.+1) ,
     is_true (leq (S (interp_aux n Nfr k)) (n.+1)).
@@ -213,6 +296,7 @@ spec H2; [ split | ].
 -
 clear - H H0.
 apply BFLOOR_le'; auto.
+compute; split; congruence.
 -
 apply Fle_trans with x; auto.
 apply BFLOOR_le; auto.
@@ -443,5 +527,7 @@ Proof. rep_lia. Qed.
 Definition synth_err (d: Data.t) : ftype Tdouble :=
   let '(_, (energy, diff_sum)) := iterk (N_range (Data.Hfr d)) (N_range1 (Data.Hfr d)) (N_range (Data.Hbg d)) (Data.dt d) (Data.BG d) (Data.X d) (Data.waves d) (Data.Nfr d).+1
    in  (diff_sum / energy)%F64.
+
+
 
 
