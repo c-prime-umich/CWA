@@ -134,6 +134,32 @@ Qed.
 Section RDEF.
 Import Rdefinitions.
 
+
+Lemma round_between_nats: forall x n,
+   Z.of_nat n <= Int.max_signed ->
+  (0 <= x <= IZR (Z.of_nat n))%R ->
+  (0 <= Generic_fmt.round Zaux.radix2 (SpecFloat.fexp (fprec Tdouble) (femax Tdouble)) (BinarySingleNaN.round_mode BinarySingleNaN.mode_NE) x <= IZR (Z.of_nat n))%R.
+Admitted.
+
+
+Lemma Rabs_round_range: forall x n,
+   Z.of_nat n <= Int.max_signed ->
+  (0 <= x <= IZR (Z.of_nat n))%R ->
+  (Rbasic_fun.Rabs (Generic_fmt.round Zaux.radix2 (SpecFloat.fexp (fprec Tdouble) (femax Tdouble)) (BinarySingleNaN.round_mode BinarySingleNaN.mode_NE) x) <
+  bpow Zaux.radix2 (femax Tdouble))%R.
+Proof.
+intros.
+pose proof (round_between_nats x n H H0).
+set (x' := Generic_fmt.round _ _ _ x) in H1|-*. clearbody x'.
+clear x H0.
+simpl bpow.
+destruct H1.
+rewrite Rbasic_fun.Rabs_pos_eq; auto.
+eapply RIneq.Rle_lt_trans. apply H1.
+apply RIneq.IZR_lt.
+rep_lia.
+Qed.
+
 Lemma interpolate_range: forall [Nfr Nbg: nat]
     (H0: 1 < Z.of_nat (S Nfr) <= Int.max_signed)
     (H1: Z.of_nat (S Nbg) <= Int.max_signed)
@@ -163,8 +189,60 @@ destruct (BofZ_exact prec emax F1 F2 (Z.of_nat Nbg)) as [EQbg [FINbg SIGNbg]];
 change (BofZ _ _ _ _ (Z.of_nat k)) with k' in EQk, FINk, SIGNk.
 change (BofZ _ _ _ _ (Z.of_nat Nfr)) with Nfr' in EQfr, FINfr, SIGNfr.
 change (BofZ _ _ _ _ (Z.of_nat Nbg)) with Nbg' in EQbg, FINbg, SIGNbg.
-(* This is the wrong approach.  Better to simply use vcfloat to prove this *)
-Admitted.
+set (y := Binary.Bmult _ _ _ _ _ _ _ _).
+assert (Binary.is_finite y = true /\ (Rle 0 (Binary.B2R _ _ y) /\ Rle (Binary.B2R _ _ y) (Binary.B2R _ _ Nbg'))).
+2: destruct H0 as [? [? ?]]; split3; auto; rewrite BCMP_Rle_bool; auto; apply Rle_bool_true; auto.
+rewrite EQbg.
+pose proof Binary.Bdiv_correct prec emax F1 F2 nan BinarySingleNaN.mode_NE k' Nfr'.
+spec H0; [ clear H0 y; rewrite EQfr; intro Hx; apply RIneq.eq_IZR in Hx; lia | ].
+rewrite EQk EQfr in H0.
+set (d := (_ / _)%R) in H0.
+assert (Hd: (0 <= d <= 1)%R). {
+ clear - H2. subst d. pose proof ltn_ord k.
+ split.
+ apply Stdlib.Rdiv_pos_compat.
+ apply RIneq.IZR_le. lia.
+ apply RIneq.IZR_lt. lia.
+ apply Generic_proof.Rdiv_ge_mult_pos. apply RIneq.IZR_lt; lia.
+ rewrite RIneq.Rmult_1_r.
+ apply RIneq.IZR_le. lia.
+}
+rewrite Rlt_bool_true in H0.
+2:{ apply (Rabs_round_range d 1). clear; rep_lia. apply Hd. }
+assert (H3: (0 <= Generic_fmt.round Zaux.radix2 (SpecFloat.fexp prec emax) (BinarySingleNaN.round_mode BinarySingleNaN.mode_NE) d <= 1)%R). {
+ clearbody d; clear - Hd.
+ change 1%R with (IZR (Z.of_nat 1)).
+ apply round_between_nats; auto. clear; rep_lia. 
+}
+destruct H0 as [EQd [FINd SIGNd]].
+pose proof Binary.Bmult_correct prec emax F1 F2 nan' BinarySingleNaN.mode_NE 
+    (Binary.Bdiv prec emax F1 F2 nan BinarySingleNaN.mode_NE k' Nfr') Nbg'.
+rewrite EQd in H0.
+set (d' := Generic_fmt.round _ _ _ d) in H0,H3|-*.
+assert (Hd'': (0 <= d' * IZR (Z.of_nat Nbg) <= IZR (Z.of_nat Nbg))%R). {
+  clear - H3. split.  
+  apply RIneq.Rmult_le_pos; try Lra.lra. 
+ apply RIneq.IZR_le. lia.
+ rewrite -{2}(Raxioms.Rmult_1_l (IZR _)).
+ apply RIneq.Rmult_le_compat_r; try Lra.lra.
+ apply RIneq.IZR_le. lia.
+}
+rewrite EQbg in H0.
+set (d'' := (d' * _)%R) in Hd'', H0|-*.
+rewrite Rlt_bool_true in H0.
+2:{ clearbody d''; clear - Hd'' H1 .
+  apply (Rabs_round_range d'' Nbg). rep_lia.  auto.
+}
+destruct H0 as [EQy [FINy SIGNy]].
+change (Binary.Bmult _ _ _ _ _ _ _ _) with y in EQy, FINy, SIGNy.
+rewrite FINd FINk FINbg /= in FINy.
+split; auto.
+rewrite {}EQy.
+clearbody d'. clear EQd Hd d.
+clearbody d''.
+clear - Hd'' H1.
+apply round_between_nats; try rep_lia; auto.
+Qed.
 
 End RDEF.
 
