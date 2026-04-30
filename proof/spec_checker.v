@@ -137,7 +137,7 @@ Definition wrap_spec :=
 Definition interpolate_spec :=
   DECLARE _interpolate
   WITH sh: share, Y: {Nt: nat &  ((Z.of_nat (S Nt) <= Int.max_signed) * 'rV[ftype Tdouble]_(S Nt))}, 
-    yp: val, K: {Nfr & ((Z.of_nat (S Nfr) <= Int.max_signed) * 'I_(S Nfr))}
+    yp: val, K: {Nfr & ((1 < Z.of_nat (S Nfr) <= Int.max_signed) * 'I_(S Nfr))}
   PRE [ tint, tint, tptr tdouble, tdouble ] let (Nt,Hty) := Y in let '(Ht,y):=Hty in let (Nfr,Hfrk) := K in let '(Hfr,k) := Hfrk in  
     PROP (readable_share sh)
     PARAMS (Vint (Int.repr(S Nfr)); Vint (Int.repr(S Nt)); yp; Vfloat (Zconst Tdouble (nat_of_ord k)))

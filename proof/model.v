@@ -45,23 +45,21 @@ Record t := {
   X: 'M[ftype Tdouble]_(Nb.+1,Nfr.+1);
   BG: 'M[ftype Tdouble]_(Nb.+1,Nbg.+1);
   waves: seq Wave.t;
-  Hfr: Z.of_nat (Nb.+1 * Nfr.+1) <= Int.max_signed;
+  Hfr: 1 < Z.of_nat Nfr.+1 /\ Z.of_nat (Nb.+1 * Nfr.+1) <= Int.max_signed;
   Hbg: Z.of_nat (Nb.+1 * Nbg.+1) <= Int.max_signed
 }.
 End Data.
  
-Section Floor.
-Import BinarySingleNaN.
+Definition never_nan:   sig (fun x : float => eq (Binary.is_nan (fprec Tdouble) (femax Tdouble) x) true)
+ := FPCore.any_nan (fprec Tdouble) (femax Tdouble) (fprec_lt_femax Tdouble).
 
-Axiom BFLOOR_nan :
-  sig (fun x : float => eq (Binary.is_nan 53 1024 x) true).
-
-Definition BFLOOR (x : Binary.binary_float (fprec Tdouble) (femax Tdouble)) : Binary.binary_float (fprec Tdouble) (femax Tdouble) 
-  := Binary.BSN2B _ _ BFLOOR_nan
-  (@BinarySingleNaN.Bnearbyint (fprec Tdouble) (femax Tdouble) (fprec_lt_femax Tdouble)  mode_DN 
-   (Binary.B2BSN _ _ x)).
-
-End Floor.
+Definition BFLOOR (x : Binary.binary_float (fprec Tdouble) (femax Tdouble)) : Binary.binary_float (fprec Tdouble) (femax Tdouble)
+ (* remark: if x is finite, then Bnearbyint is never a nan, so never_nan will never be used *)
+  := if Binary.is_finite x 
+   then Binary.BSN2B _ _ never_nan
+  (@BinarySingleNaN.Bnearbyint (fprec Tdouble) (femax Tdouble) (fprec_lt_femax Tdouble)  BinarySingleNaN.mode_DN 
+   (Binary.B2BSN _ _ x))
+  else x.
 
 Definition M_PI : ftype Tdouble := 3.141592653589793%F64.
 
@@ -73,21 +71,102 @@ Definition range2pi (x: ftype Tdouble) : ftype Tdouble :=
 Definition wrap (x: ftype Tdouble) : ftype Tdouble :=
    BMINUS (range2pi (BPLUS x M_PI)) M_PI.
 
-Lemma Btrunc_range_pos: forall (lo hi: Z) (x: ftype Tdouble),
-  (Int.min_signed <= lo)%Z ->
-  (hi <= Int.max_signed)%Z ->
-  (Zconst Tdouble lo <= x <= Zconst Tdouble Int.max_signed)%F64 ->
+
+Lemma BCMP_Rle_bool:
+ forall [t: type] (x y: ftype t),
+    Binary.is_finite x = true ->
+    Binary.is_finite y = true ->
+    BCMP Gt false x y = Rle_bool (Binary.B2R (fprec t) (femax t) x) (Binary.B2R (fprec t) (femax t) y).
+Proof.
+intros.
+unfold BCMP, extend_comp.
+rewrite Binary.Bcompare_correct; auto.
+Qed.
+
+
+Lemma BCMP_Rlt_bool:
+ forall [t: type] (x y: ftype t),
+    Binary.is_finite x = true ->
+    Binary.is_finite y = true ->
+    BCMP Gt true x y = Rlt_bool (Binary.B2R (fprec t) (femax t) y) (Binary.B2R (fprec t) (femax t) x).
+Proof.
+intros.
+unfold BCMP, extend_comp.
+unfold Rlt_bool.
+rewrite Binary.Bcompare_correct; auto.
+rewrite Rcompare_sym.
+destruct (Rcompare _ _); auto.
+Qed.
+
+Lemma Btrunc_range_pos: forall (hi: Z) (x: ftype Tdouble),
+  (0 <= hi < Int.max_signed)%Z ->
+  (Zconst Tdouble 0 <= x <= Zconst Tdouble hi)%F64 ->
   Binary.is_finite x = true ->
-  (lo <= Binary.Btrunc _ _ x < hi)%Z.
-Admitted.
+  (0 <= Binary.Btrunc _ _ x <= hi)%Z.
+Proof.
+intros.
+assert (Rdefinitions.Rle (Rdefinitions.IZR 0) (Rdefinitions.IZR (Binary.Btrunc (fprec Tdouble) (femax Tdouble) x))
+            /\  Rdefinitions.Rle (Rdefinitions.IZR (Binary.Btrunc (fprec Tdouble) (femax Tdouble) x)) (Rdefinitions.IZR hi)).
+2: destruct H2; split; apply RIneq.le_IZR; auto.
+destruct H0.
+erewrite Binary.Btrunc_correct by reflexivity.
+rewrite FIX.round_FIX_IZR.
+unfold Zconst in *.
+rewrite (proof_irr (Pos2Z.is_pos (fprecp Tdouble)) (fprec_lt_femax Tdouble)) in H0,H2.
+decompose [and] (BofZ_exact _ _ (fprec_gt_0 Tdouble) (fprec_lt_femax Tdouble) 0 ltac:(simpl; unfold Z.pow_pos; simpl; clear - H H0; rep_lia)) .
+decompose [and] (BofZ_exact _ _ (fprec_gt_0 Tdouble) (fprec_lt_femax Tdouble) hi ltac:(simpl; unfold Z.pow_pos; simpl; clear - H H0; rep_lia)).
+rewrite BCMP_Rle_bool in H0; auto.
+rewrite BCMP_Rle_bool in H2; auto.
+rewrite H4 in H2.
+rewrite H3 in H0.
+destruct (Rle_bool_spec (Binary.B2R (fprec Tdouble) (femax Tdouble) x) (Rdefinitions.IZR hi)); try discriminate.
+destruct (Rle_bool_spec (Rdefinitions.IZR 0) (Binary.B2R (fprec Tdouble) (femax Tdouble) x)); try discriminate.
+forget (Binary.B2R _ _ x) as y.
+apply Ztrunc_le in H10.
+rewrite Ztrunc_IZR in H10.
+apply RIneq.IZR_le in H10.
+apply Ztrunc_le in H7.
+rewrite Ztrunc_IZR in H7.
+apply RIneq.IZR_le in H7.
+auto.
+Qed.
+
+Section RDEF.
+Import Rdefinitions.
 
 Lemma interpolate_range: forall [Nfr Nbg: nat]
-    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (H0: 1 < Z.of_nat (S Nfr) <= Int.max_signed)
     (H1: Z.of_nat (S Nbg) <= Int.max_signed)
    (k: 'I_Nfr.+1),
   let j := BMULT (BDIV (Zconst Tdouble (Z.of_nat k)) (Zconst Tdouble (Z.of_nat Nfr))) (Zconst Tdouble (Z.of_nat Nbg)) in
   Binary.is_finite j = true /\   (0 <= j <= Zconst Tdouble (Z.of_nat Nbg))%F64.
+Proof.
+intros * [H2 ?] ? ?.
+unfold Zconst.
+rewrite (proof_irr (Pos2Z.is_pos (fprecp Tdouble)) (fprec_lt_femax Tdouble)).
+unfold BMULT, BDIV, BINOP.
+set (nan := FPCore.div_nan _ _ _); clearbody nan.
+set (nan' := FPCore.mult_nan _ _ _); clearbody nan'.
+set (k' := BofZ _ _ _ _ (Z.of_nat k)).
+set (Nfr' := BofZ _ _ _ _ (Z.of_nat Nfr)).
+set (Nbg' := BofZ _ _ _ _ _).
+set (prec := fprec Tdouble) in *.
+set (emax := femax Tdouble) in *.
+set (F1 := fprec_gt_0 Tdouble) in *.
+set (F2 := fprec_lt_femax Tdouble) in *.
+destruct (BofZ_exact prec emax F1 F2 (Z.of_nat Nfr)) as [EQfr [FINfr SIGNfr]];
+  [ simpl; unfold Z.pow_pos; simpl; rep_lia | ].
+destruct (BofZ_exact prec emax F1 F2 (Z.of_nat k)) as [EQk [FINk SIGNk]];
+  [pose proof ltn_ord k; simpl; unfold Z.pow_pos; simpl; rep_lia | ].
+destruct (BofZ_exact prec emax F1 F2 (Z.of_nat Nbg)) as [EQbg [FINbg SIGNbg]];
+  [simpl; unfold Z.pow_pos; simpl; rep_lia | ].
+change (BofZ _ _ _ _ (Z.of_nat k)) with k' in EQk, FINk, SIGNk.
+change (BofZ _ _ _ _ (Z.of_nat Nfr)) with Nfr' in EQfr, FINfr, SIGNfr.
+change (BofZ _ _ _ _ (Z.of_nat Nbg)) with Nbg' in EQbg, FINbg, SIGNbg.
+(* This is the wrong approach.  Better to simply use vcfloat to prove this *)
 Admitted.
+
+End RDEF.
 
 Definition interp_aux (n Nfr: nat) (k: nat) : nat :=
   Z.to_nat (Binary.Btrunc _ _ (BFLOOR (BMULT (BDIV (Zconst _ (Z.of_nat k)) (Zconst _ (Z.of_nat Nfr))) 
@@ -207,6 +286,7 @@ destruct x; try discriminate; auto.
 rewrite H3 in H1.
 spec H2.
 destruct (BinarySingleNaN.Bnearbyint BinarySingleNaN.mode_DN _); auto.
+rewrite H.
 rewrite Binary.B2BSN_BSN2B.
 rewrite BinarySingleNaN.Bcompare_correct; auto.
 rewrite Binary.B2R_B2BSN.
@@ -240,6 +320,7 @@ destruct x; try discriminate; auto.
 rewrite H3 in H1.
 spec H2.
 destruct (BinarySingleNaN.Bnearbyint BinarySingleNaN.mode_DN _); auto.
+rewrite H.
 rewrite Binary.B2BSN_BSN2B.
 rewrite BinarySingleNaN.Bcompare_correct; auto.
 2: destruct (Zconst Tdouble i); try discriminate; simpl; auto.
@@ -274,6 +355,7 @@ intros.
 unfold BFLOOR.
 unfold BCMP.
 unfold extend_comp.
+rewrite H.
 rewrite Binary.is_finite_BSN2B.
 decompose [and] ( BinarySingleNaN.Bnearbyint_correct _ _ (fprec_lt_femax Tdouble)
      BinarySingleNaN.mode_DN
@@ -283,7 +365,7 @@ rewrite Binary.is_finite_B2BSN.
 auto.
 Qed.
 
-Lemma interp_aux1: forall [Nfr n]  (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn: Z.of_nat (n.+1) <= Int.max_signed) (k: 'I_Nfr.+1) ,
+Lemma interp_aux1: forall [Nfr n]  (Hfr: 1 < Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn: Z.of_nat (n.+1) <= Int.max_signed) (k: 'I_Nfr.+1) ,
     is_true (leq (S (interp_aux n Nfr k)) (n.+1)).
 Proof.
 intros.
@@ -291,8 +373,8 @@ unfold interp_aux.
 set (x := BMULT _ _).
 destruct (interpolate_range Hfr Hn k).
 fold x in H,H0. destruct H0. clearbody x.
-pose proof Btrunc_range_pos 0 (Z.of_nat n.+1) (BFLOOR x) ltac:(rep_lia) ltac:(rep_lia).
-spec H2; [ split | ].
+pose proof Btrunc_range_pos (Z.of_nat n) (BFLOOR x) ltac:(rep_lia).
+spec H2; [ clear H2; split | ].
 -
 clear - H H0.
 apply BFLOOR_le'; auto.
@@ -300,15 +382,12 @@ compute; split; congruence.
 -
 apply Fle_trans with x; auto.
 apply BFLOOR_le; auto.
-apply Fle_trans with (Zconst Tdouble (Z.of_nat n)); auto.
-apply Fle_Zconst.
-simpl. clear - Hn. lia. simpl. clear. rep_lia.
 -
 spec H2. apply BFLOOR_finite; auto.
 lia.
 Qed.
 
-Definition interpolate [n Nfr: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn: Z.of_nat (n.+1) <= Int.max_signed)  (y: 'rV[ftype Tdouble]_n.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
+Definition interpolate [n Nfr: nat] (Hfr: 1 < Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn: Z.of_nat (n.+1) <= Int.max_signed)  (y: 'rV[ftype Tdouble]_n.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
   let a := BMULT (BDIV (Zconst _ (Z.of_nat k)) (Zconst _ (Z.of_nat Nfr))) (Zconst Tdouble (Z.of_nat n)) in
   let j := Binary.Btrunc _ _ (BFLOOR a) in
   let j' := @Ordinal n.+1 (Z.to_nat j) (interp_aux1 Hfr Hn k) in
@@ -317,7 +396,7 @@ Definition interpolate [n Nfr: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hn
    else fun=> y ord0 j') erefl.
 
 Lemma getBG_col: forall [Nfr Nbg: nat]
-    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (H0: 1 < Z.of_nat (S Nfr) <= Int.max_signed)
     (H1: Z.of_nat (S Nbg) <= Int.max_signed)
     (k: 'I_Nfr.+1),
   let j := BMULT (BDIV (Zconst Tdouble (Z.of_nat k)) (Zconst Tdouble (Z.of_nat Nfr))) (Zconst Tdouble (Z.of_nat Nbg)) in
@@ -328,23 +407,15 @@ intros.
 destruct (interpolate_range H0 H1 k) as [Hj ?H].
 fold j in Hj,H.
 clearbody j.
-pose proof (Btrunc_range_pos 0 (Z.of_nat Nbg) j ltac:(rep_lia) ltac:(rep_lia)).
+pose proof (Btrunc_range_pos (Z.of_nat Nbg) j ltac:(rep_lia) H Hj).
 subst c.
 set (i := Binary.Btrunc _ _ j) in H,H2|-*. clearbody i.
-destruct H.
-spec H2; [ | lia].
-split; auto.
-clear - H3 H1.
-eapply Fle_trans; try eassumption.
-apply Fle_Zconst.
-simpl. lia.
-simpl.
-rep_lia.
+lia.
 Qed.
 
 Definition Bexp : ftype Tdouble -> ftype Tdouble := FPCore.ff_func VSTlib.spec_math.MF.exp.
 
-Definition waveform [Nfr Nb: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hnb: Z.of_nat (Nb.+1) <= Int.max_signed) 
+Definition waveform [Nfr Nb: nat] (Hfr: 1 < Z.of_nat (Nfr.+1)<=Int.max_signed) (Hnb: Z.of_nat (Nb.+1) <= Int.max_signed) 
      (dt: ftype Tdouble) (k: 'I_Nfr.+1)  (θw: Values.val * Wave.t) : 'cV[ftype Tdouble]_Nb.+1 :=
  match θw with
  | (Vfloat θ, w) => 
@@ -356,7 +427,7 @@ Definition waveform [Nfr Nb: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed) (Hnb:
  | _ => const_mx (Zconst _ 0)
  end.
  
-Definition updateθ [Nfr: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed)  (k: 'I_Nfr.+1) (dt: ftype Tdouble) (θw: Values.val * Wave.t) : Values.val * Wave.t :=
+Definition updateθ [Nfr: nat] (Hfr: 1 < Z.of_nat (Nfr.+1)<=Int.max_signed)  (k: 'I_Nfr.+1) (dt: ftype Tdouble) (θw: Values.val * Wave.t) : Values.val * Wave.t :=
  match θw with
  | (Vfloat θ, w) =>
   let v := interpolate  Hfr (Wave.Hn w) (Wave.v w) (@inord Nfr (k-1)%N) in
@@ -365,7 +436,7 @@ Definition updateθ [Nfr: nat] (Hfr: Z.of_nat (Nfr.+1)<=Int.max_signed)  (k: 'I_
  end.
 
 Definition one_iterk  [Nfr Nb Nbg : nat] 
-    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (H0: 1 < Z.of_nat (S Nfr) <= Int.max_signed)
     (Hb: Z.of_nat (S Nb) <= Int.max_signed)
     (H1: Z.of_nat (S Nbg) <= Int.max_signed) 
    (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
@@ -397,7 +468,7 @@ Definition initial_values (waves: list Wave.t) :  (list (Values.val * Wave.t) * 
  (map (fun w => (Vundef, w)) waves, (Zconst _ 0, Zconst _ 0)).
 
 Definition iterk [Nfr Nb Nbg : nat] 
-    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (H0: 1 < Z.of_nat (S Nfr) <= Int.max_signed)
     (Hb: Z.of_nat (S Nb) <= Int.max_signed)
     (H1: Z.of_nat (S Nbg) <= Int.max_signed)
    (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
@@ -417,7 +488,7 @@ destruct (forallb f al), (f a); tauto.
 Qed.
 
 Definition one_iteri  [Nfr Nb Nbg : nat] 
-    (H0: Z.of_nat (S Nfr) <= Int.max_signed)
+    (H0: 1 < Z.of_nat (S Nfr) <= Int.max_signed)
     (Hb: Z.of_nat (S Nb) <= Int.max_signed)
     (H1: Z.of_nat (S Nbg) <= Int.max_signed)
     (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
@@ -439,7 +510,7 @@ Definition one_iteri  [Nfr Nb Nbg : nat]
     in (θw', (energy', d')).
 
 Definition all_iteri: forall  [Nfr Nb Nbg : nat] 
-    (Hfr: Z.of_nat (S Nfr) <= Int.max_signed)
+    (Hfr: 1 < Z.of_nat (S Nfr) <= Int.max_signed)
     (Hb: Z.of_nat (S Nb) <= Int.max_signed)
     (Hbg: Z.of_nat (S Nbg) <= Int.max_signed)
     (dt: ftype Tdouble) (BG :  'M[ftype Tdouble]_(Nb.+1,Nbg.+1)) 
@@ -516,16 +587,20 @@ clearbody r.
 induction r; rewrite ?mxE // -IHr //.
 Qed.
 
-Lemma N_range: forall [Nb N] (H: Z.of_nat (S Nb * S N) <= Int.max_signed),
-        Z.of_nat (S N) <= Int.max_signed.
+Lemma N_range: forall [Nb N] (H: 1 < Z.of_nat N.+1 /\  Z.of_nat (S Nb * S N) <= Int.max_signed),
+        1 < Z.of_nat N.+1 /\  Z.of_nat (S N) <= Int.max_signed.
 Proof. rep_lia. Qed.
 
-Lemma N_range1: forall [Nb N] (H: Z.of_nat (S Nb * S N) <= Int.max_signed),
+Lemma N_range1: forall [Nb N] (H: 1 < Z.of_nat N.+1 /\  Z.of_nat (S Nb * S N) <= Int.max_signed),
         Z.of_nat (S Nb) <= Int.max_signed.
 Proof. rep_lia. Qed.
 
+Lemma N_range2: forall [Nb N] (H: Z.of_nat (S Nb * S N) <= Int.max_signed),
+        Z.of_nat (S N) <= Int.max_signed.
+Proof. rep_lia. Qed.
+
 Definition synth_err (d: Data.t) : ftype Tdouble :=
-  let '(_, (energy, diff_sum)) := iterk (N_range (Data.Hfr d)) (N_range1 (Data.Hfr d)) (N_range (Data.Hbg d)) (Data.dt d) (Data.BG d) (Data.X d) (Data.waves d) (Data.Nfr d).+1
+  let '(_, (energy, diff_sum)) := iterk (N_range (Data.Hfr d)) (N_range1 (Data.Hfr d)) (N_range2 (Data.Hbg d)) (Data.dt d) (Data.BG d) (Data.X d) (Data.waves d) (Data.Nfr d).+1
    in  (diff_sum / energy)%F64.
 
 
