@@ -139,8 +139,31 @@ Lemma round_between_nats: forall x n,
    Z.of_nat n <= Int.max_signed ->
   (0 <= x <= IZR (Z.of_nat n))%R ->
   (0 <= Generic_fmt.round Zaux.radix2 (SpecFloat.fexp (fprec Tdouble) (femax Tdouble)) (BinarySingleNaN.round_mode BinarySingleNaN.mode_NE) x <= IZR (Z.of_nat n))%R.
-Admitted.
-
+Proof.
+intros.
+pose proof Generic_fmt.round_le Zaux.radix2 (SpecFloat.fexp (fprec Tdouble) (femax Tdouble)) (BinarySingleNaN.round_mode BinarySingleNaN.mode_NE) .
+pose proof (H1 x (IZR (Z.of_nat n)) ltac:(Lra.lra)).
+specialize (H1 0%R x ltac:(Lra.lra)).
+rewrite Generic_fmt.round_0 in H1.
+split; auto.
+clear H1.
+pose proof  (BofZ_correct (fprec Tdouble) (femax Tdouble) (fprec_gt_0 Tdouble) (fprec_lt_femax Tdouble) (Z.of_nat n)).
+rewrite Rlt_bool_true in H1.
+destruct H1 as [? _].
+rewrite <- H1 in H2.
+-
+destruct (BofZ_exact (fprec Tdouble) (femax Tdouble) (fprec_gt_0 Tdouble) (fprec_lt_femax Tdouble) (Z.of_nat n)
+  ltac:(simpl; unfold Z.pow_pos; simpl; rep_lia)) as [? _].
+Lra.lra.
+-
+clear H0 H2 x.
+rewrite Generic_fmt.round_generic.
+rewrite Rbasic_fun.Rabs_pos_eq.
+simpl. apply RIneq.IZR_lt. rep_lia.
+apply RIneq.IZR_le. lia.
+apply (Lang_expr.generic_format_fexp_IZR (Z.of_nat n) (fprec Tdouble) (femax Tdouble)); try apply erefl.
+simpl; rep_lia.
+Qed.
 
 Lemma Rabs_round_range: forall x n,
    Z.of_nat n <= Int.max_signed ->
