@@ -12,6 +12,7 @@ Import fintype matrix.
 
 Require LAProof.accuracy_proofs.export.
 Module F := LAProof.accuracy_proofs.mv_mathcomp.F.
+Require Import CWA.float_lemmas.
 
 (** Now we undo all the settings that mathcomp has modified *)
 Unset Implicit Arguments.
@@ -310,20 +311,19 @@ apply RIneq.Rle_trans with (Rdefinitions.IZR 0).
 apply RIneq.IZR_le. rep_lia.
 unfold FT2R.
 clear - H2 H3.
-unfold BCMP, extend_comp in H3.
-rewrite Binary.Bcompare_correct in H3; auto.
-simpl Binary.B2R in H3.
-apply Rcompare_not_Gt_inv.
-destruct (Rcompare _ _); congruence.
+-
+rewrite BCMP_eq in H3; auto.
+destruct (Rle_bool_spec (Binary.B2R (fprec Tdouble) (femax Tdouble) 0%F64) (Binary.B2R (fprec Tdouble) (femax Tdouble) j)); auto; discriminate.
+-
 destruct (BofZ_exact _ _ (fprec_gt_0 Tdouble) (fprec_lt_femax Tdouble) (Z.of_nat Nbg) ltac:(simpl; rep_lia)) as [? [? _]].
-unfold BCMP, extend_comp , Zconst in H4.
+unfold Zconst in H4; rewrite (proof_irr (Pos2Z.is_pos (fprecp  Tdouble)) (fprec_gt_0 Tdouble)) in H4.
+rewrite BCMP_eq in H4; auto.
 unfold FT2R.
-rewrite (proof_irr (Pos2Z.is_pos (fprecp  Tdouble)) (fprec_gt_0 Tdouble)) in H4.
-rewrite Binary.Bcompare_correct in H4; auto.
-apply RIneq.Rle_trans with (Rdefinitions.IZR (Z.of_nat Nbg)).
-rewrite H5 in H4.
-apply Rcompare_not_Gt_inv.
-destruct (Rcompare _ _); try discriminate.
+destruct (Rle_bool_spec  (Binary.B2R (fprec Tdouble) (femax Tdouble) j)
+       (Binary.B2R (fprec Tdouble) (femax Tdouble)
+          (BofZ (fprec Tdouble) (femax Tdouble) (fprec_gt_0 Tdouble) (fprec_lt_femax Tdouble) Nbg))); try discriminate.
+rewrite H5 in H7.
+apply RIneq.Rle_trans with (Rdefinitions.IZR (Z.of_nat Nbg)); auto.
 apply RIneq.IZR_le. rep_lia.
 Qed.
 

@@ -17,6 +17,7 @@ Import Rdefinitions.
 
 Require LAProof.accuracy_proofs.export.
 Module F := LAProof.accuracy_proofs.mv_mathcomp.F.
+Require Import CWA.float_lemmas.
 
 (** Now we undo all the settings that mathcomp has modified *)
 Unset Implicit Arguments.

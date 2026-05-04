@@ -2,6 +2,7 @@
 -arg "-async-proofs-j 8"
 -arg -w -arg -notation-overridden,-notation-incompatible-prefix,-ambiguous-paths
 checker.v
+float_lemmas.v
 model.v
 spec_checker.v
 verif_checker.v
