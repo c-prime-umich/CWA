@@ -13,6 +13,7 @@ Import fintype matrix.
 Require LAProof.accuracy_proofs.export.
 Module F := LAProof.accuracy_proofs.mv_mathcomp.F.
 Require Import CWA.float_lemmas.
+Import Pmodel.
 
 (** Now we undo all the settings that mathcomp has modified *)
 Unset Implicit Arguments.
@@ -370,17 +371,33 @@ Section Inside_Synthesize.
 
   Context
   {Espec : OracleKind} 
+  (D : Data.t)
+(*
   [Nfr Nb Nbg]
   (Hfr : 1 < Z.of_nat (S Nfr) /\ Z.of_nat (S Nb * S Nfr) <= Int.max_signed)
   (Hbg : Z.of_nat (S Nb * S Nbg) <= Int.max_signed)
   (dt : float)
   (BG : 'M[ftype Tdouble]_(S Nb, S Nbg))
   (X : 'M[ftype Tdouble]_(S Nb, S Nfr))
+*)
   (Xp Bp  p v_theta: val)
   (wx : list (Wave.t * (val * val * val)))
   (Hwx : Zlength wx <= MAXW)
   (sh : share)
   (SH : readable_share sh).
+
+
+Let Nb := Data.Nb D.
+Let Nfr := Data.Nfr D.
+Let Nbg := Data.Nbg D.
+Let dt := Data.dt D.
+Let BG := Data.BG D.
+Let waves := Data.waves D.
+Let Hfr: 1 < Z.of_nat (S Nfr) /\ Z.of_nat ((S Nb) * (S Nfr)) <= Int.max_signed := Data.Hfr D.
+Let Hfr':  1 < Z.of_nat (S Nfr) /\  Z.of_nat (S Nfr) <= Int.max_signed := N_range Hfr.
+Let Hbg : Z.of_nat (S Nb * S Nbg) <= Int.max_signed := Data.Hbg D.
+Let Hbg' : Z.of_nat (S Nbg) <= Int.max_signed := N_range2 Hbg.
+Let X := Data.X D.
 
 Definition iteri_upto
   [k: Z]
@@ -388,7 +405,7 @@ Definition iteri_upto
   (θw : list (val * Wave.t))
   (energy  diff_sum : ftype Tdouble)
   i := 
-  seq.foldl (one_iteri (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg) dt BG X (Ordinal Hk)) (θw, (energy, diff_sum)) (sublist 0 i (ord_enum (S Nb))).
+  seq.foldl (one_iteri D (Ordinal Hk)) (θw, (energy, diff_sum)) (sublist 0 i (ord_enum (S Nb))).
 
 Lemma iteri_upto_Zlength: 
   forall k 
@@ -400,7 +417,7 @@ Proof.
  unfold iteri_upto.
  revert θw energy diff_sum; 
  induction (sublist _ _ _); intros; auto.
- set (f := one_iteri _ _ _ _ _ _ _) in *.
+ set (f := one_iteri _ _) in *.
  unfold seq.foldl. fold (seq.foldl f).
  unfold f at 2. unfold one_iteri.
  destruct (eqtype.eq_op _ _); [ | list_solve].
@@ -427,8 +444,7 @@ rewrite sublist_len_1 by list_solve.
 unfold seq.foldl at 2.
 rewrite (@Znth_ord_enum _ _ 0 (ssrnat.ltn0Sn Nb)) by (clear; lia).
 set (il := sublist _ _ _). clearbody il.
-set (a := one_iteri (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg) dt BG X
-                 (Ordinal Hk) (θw, (energy, diff_sum)) _).
+set (a := one_iteri D (Ordinal Hk) (θw, (energy, diff_sum)) _).
 
 assert (Zlength (fst a) = Zlength θw /\  is_float (fst (Znth w (fst a)))).
 -
@@ -496,7 +512,7 @@ rewrite (sublist_split 0 1 i) by list_solve.
 rewrite sublist_len_1 by list_solve.
 change @app with @seq.cat. rewrite seq.foldl_cat.
 unfold seq.foldl at 2.
-set (a := one_iteri _ _ _ _ _ _ _) at 1.
+set (a := one_iteri _ _) at 1.
 unfold one_iteri.
 rewrite (@Znth_ord_enum _ _ 0 (ssrnat.ltn0Sn Nb)) by (clear; lia).
 destruct (eqtype.eq_op _ _) eqn:H4;
@@ -515,7 +531,8 @@ unfold eqtype.eq_op at 1.
 simpl.
 unfold eqtype.eq_op at 1.
 simpl.
-destruct (ssrnat.eqn x _) eqn:?H; [ lia | ].
+fold Nb.
+destruct (ssrnat.eqn _ _) eqn:?H; [ lia | ].
 clear H5.
 apply IHForall.
 -
@@ -534,12 +551,13 @@ assert (exists θ, v = Vfloat θ). clear - Hk0; destruct v; try contradiction; e
 destruct H5 as [θ ?]; subst v.
 simpl.
 auto.
-set (a := one_iteri _ _ _ _ _ _ _) in *.
+set (a := one_iteri _ _) in *.
 simpl.
 unfold eqtype.eq_op at 1.
 simpl.
 unfold eqtype.eq_op at 1.
 simpl.
+fold Nb.
 destruct (ssrnat.eqn x _) eqn:?H; [ lia | ].
 clear H6.
 rewrite IHForall.
@@ -566,7 +584,7 @@ Lemma semax_synthesize_w_loop:
   (energy' diff_sum' : ftype Tdouble)
   (H1 : iteri_upto Hk θw energy diff_sum i = (θw', (energy', diff_sum'))),
  let i' := Ordinal Hi : 'I_(S Nb) in
- let ew := map (fun f : 'cV_(S Nb) => fun_of_matrix f i' ord0) (map (waveform (N_range Hfr) (N_range1 Hfr) dt (Ordinal Hk)) (θw'' i)) : list (ftype Tdouble) in
+ let ew := map (fun f : 'cV_(S Nb) => fun_of_matrix f i' ord0) (map (waveform D (Ordinal Hk)) (θw'' i)) : list (ftype Tdouble) in
   semax (func_tycontext f_synthesize Vprog Gprog nil)
   (PROP ( )
    LOCAL (temp _a (val_of_float (fun_of_matrix BG i' j')); temp _i (Vint (Int.repr i)); temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord j'))));
@@ -576,7 +594,7 @@ Lemma semax_synthesize_w_loop:
    lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
    SEP (densematn sh (map_mx Some BG) Bp; 
        data_at sh tdata (Xp, (Bp, (Vint (Int.repr (Z.of_nat (S Nb))), (Vint (Int.repr (Z.of_nat (S Nfr))),
-             (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength (map fst wx))))))))))
+             (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength wx)))))))))
          p;
    data_at Tsh (tarray tdouble MAXW) (map fst θw' ++ Zrepeat Vundef (MAXW - Zlength wx)) v_theta;
    densematn sh (map_mx Some X) Xp; fold_right sepcon emp (map (wx_to_wavedata sh) wx)))
@@ -592,7 +610,7 @@ Lemma semax_synthesize_w_loop:
    lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
    SEP (densematn sh (map_mx Some BG) Bp; 
             data_at sh tdata (Xp, (Bp, (Vint (Int.repr (Z.of_nat (S Nb))), (Vint (Int.repr (Z.of_nat (S Nfr))),
-               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength (map fst wx))))))))))
+               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength wx)))))))))
             p;
             data_at Tsh (tarray tdouble MAXW)
                 (map fst (θw'' i) ++ Zrepeat Vundef (MAXW - Zlength wx)) v_theta;
@@ -612,7 +630,7 @@ forward_for_simple_bound (Zlength wx) (EX w:Z,
    lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
    SEP (densematn sh (map_mx Some BG) Bp;
             data_at sh tdata (Xp, (Bp, (Vint (Int.repr (Z.of_nat (S Nb))), (Vint (Int.repr (Z.of_nat (S Nfr))),
-               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength (map fst wx))))))))))
+               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength wx)))))))))
             p;
             data_at Tsh (tarray tdouble MAXW)
                 (map fst (sublist 0 w (θw'' i) ++ sublist w (Zlength θw') θw')
@@ -708,7 +726,7 @@ forward_if
        (Vint (Int.repr (Z.of_nat (S Nb))),
         (Vint (Int.repr (Z.of_nat (S Nfr))),
          (Vint (Int.repr (Z.of_nat (S Nbg))),
-          (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength (map fst wx))))))))))
+          (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength wx)))))))))
      p;
    data_at Tsh (tarray tdouble MAXW)
          (map fst  (sublist 0 (w+1) (θw'' i) ++ sublist (w+1) (Zlength θw') θw') ++
@@ -900,7 +918,8 @@ rewrite !map_app, !Znth_app1 by list_solve.
     pose (Zlength_ord_enum (S Nb)).
     rewrite (sublist_split 0 i (i+1)) by lia.
     change @app with @seq.cat. rewrite seq.foldl_cat.
-    fold (iteri_upto Hk θw energy diff_sum i). rewrite H1.
+    change (seq.foldl _ _ (sublist 0 _ _)) with (iteri_upto Hk θw energy diff_sum i).
+ rewrite H1.
     rewrite sublist_len_1 by lia.
     rewrite (Znth_ord_enum Hi) by lia.
     unfold seq.foldl, one_iteri, fst, eqtype.eq_op; simpl.
@@ -963,7 +982,6 @@ rewrite !map_app, !Znth_app1 by list_solve.
  apply prop_right.  f_equal. f_equal.
  prove_float_exprs_equal.
  forward.
- rewrite !Zlength_map.
  entailer!!.
  f_equal.
  assert (Zlength ew = Zlength wx) by (subst ew; list_solve).
@@ -974,8 +992,7 @@ rewrite !map_app, !Znth_app1 by list_solve.
  change Float.add with (@BPLUS _ Tdouble).
  apply f_equal2; auto.
  subst ew.
-
- rewrite !Znth_map by list_solve.
+ rewrite !Znth_map by (rewrite !Zlength_map in *; list_solve).
   unfold waveform. destruct (Znth w (θw'' i)) as [vw ww] eqn:?H. simpl in H5. subst vw.
   rewrite mxE. 
  change Float.mul with (@BMULT _ Tdouble).
@@ -986,6 +1003,7 @@ rewrite !map_app, !Znth_app1 by list_solve.
  rewrite H3. simpl Wave.A. simpl Wave.N.
  subst exparg iLBθ. simpl Wave.σ.
  simpl nat_of_ord. rewrite Z2Nat.id by lia. unfold L, M_PI.
+ change (Data.Hfr D) with Hfr. change (N_range Hfr) with Hfr'. simpl Wave.Hn.
  prove_float_exprs_equal.
  thaw FR1.
  match goal with |- ?A |-- ?B =>
@@ -1029,9 +1047,7 @@ Lemma iterk_defined_θ: forall
  (θed : list (val * Wave.t) * (ftype Tdouble * ftype Tdouble))
  (H1 : k <> 0),
 Forall (is_float oo fst)
-  (fst
-     (seq.foldl (one_iterk (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg) dt BG X) θed
-        (firstn (Z.to_nat k) (ord_enum (S Nfr))))).
+  (fst (seq.foldl (one_iterk D) θed (firstn (Z.to_nat k) (ord_enum (S Nfr))))).
 Proof.
 intros.
 pose proof (Zlength_ord_enum (S Nfr)).
@@ -1043,7 +1059,7 @@ unfold seq.foldl at 2.
 rewrite (@Znth_ord_enum _ _ 0 (ssrnat.ltn0Sn Nfr)) by (clear; lia).
 replace (Ordinal _) with (@ord0 Nfr) by (apply ord_inj; reflexivity).
 set (al := sublist _ _ _); clearbody al.
-set (u := one_iterk _ _ _ _ _ _ _ ord0).
+set (u := one_iterk _ _ _).
 assert (Forall (is_float oo fst) (fst u)).
 -
 subst u.
@@ -1057,7 +1073,6 @@ clearbody u.
 clear k H H1.
 revert u H2.
 induction al; intros; auto.
-simpl.
 apply IHal; clear IHal.
 clear - H2.
 destruct u as [θ [e d]].
@@ -1081,19 +1096,19 @@ Lemma semax_synthesize_i_loop:
 semax (func_tycontext f_synthesize Vprog Gprog nil)
   (PROP ( )
    LOCAL (
-    temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord (Ordinal (getBG_col (N_range Hfr) (N_range2 Hbg)  (Ordinal Hk) ))))));
+    temp _bg_col (Vint (Int.repr (Z.of_nat (nat_of_ord (Ordinal (getBG_col Hfr' Hbg' (Ordinal Hk) ))))));
    temp _k (Vint (Int.repr k));
-   temp _energy (Vfloat (fst (snd (iterk (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg) dt BG X (map fst wx) (Z.to_nat k)))));
-   temp _diff_sum (Vfloat (snd (snd (iterk (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg)  dt BG X (map fst wx) (Z.to_nat k))))); 
+   temp _energy (Vfloat (fst (snd (iterk D (map fst wx) (Z.to_nat k)))));
+   temp _diff_sum (Vfloat (snd (snd (iterk D (map fst wx) (Z.to_nat k))))); 
    temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
    temp _Nbg (Vint (Int.repr (S Nbg))); temp _Nfr (Vint (Int.repr (S Nfr)));
-   temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength (map fst wx))));
+   temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength wx)));
    lvar _theta (tarray tdouble  MAXW) v_theta; temp _data p)
    SEP (data_at sh tdata (Xp, (Bp, (Vint (Int.repr (Z.of_nat (S Nb))), (Vint (Int.repr (Z.of_nat (S Nfr))),
-               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength (map fst wx))))))))))
+               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength wx)))))))))
             p;
    data_at Tsh (tarray tdouble MAXW)
-       (map fst (fst (iterk (N_range Hfr)(N_range1 Hfr)  (N_range2 Hbg)  dt BG X (map fst wx) (Z.to_nat k))) ++
+       (map fst (fst (iterk D (map fst wx) (Z.to_nat k))) ++
       Zrepeat Vundef (MAXW - Zlength wx))
      v_theta;
    densematn sh (map_mx Some X) Xp; densematn sh (map_mx Some BG) Bp;
@@ -1103,30 +1118,30 @@ semax (func_tycontext f_synthesize Vprog Gprog nil)
      (PROP ( )
       LOCAL (
        temp _k (Vint (Int.repr k));
-       temp _energy (Vfloat (fst (snd (iterk (N_range Hfr)(N_range1 Hfr)  (N_range2 Hbg) dt BG X (map fst wx) (Z.to_nat (k + 1))))));
-       temp _diff_sum (Vfloat (snd (snd (iterk (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg) dt BG X (map fst wx) (Z.to_nat (k + 1)))))); 
+       temp _energy (Vfloat (fst (snd (iterk D (map fst wx) (Z.to_nat (k + 1))))));
+       temp _diff_sum (Vfloat (snd (snd (iterk D (map fst wx) (Z.to_nat (k + 1)))))); 
        temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
        temp _Nbg (Vint (Int.repr (S Nbg))); temp _Nfr (Vint (Int.repr (S Nfr)));
-       temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength (map fst wx))));
+       temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength wx)));
        lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
       SEP (data_at sh tdata (Xp, (Bp, (Vint (Int.repr (Z.of_nat (S Nb))), (Vint (Int.repr (Z.of_nat (S Nfr))),
-               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength (map fst wx))))))))))
+               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength wx)))))))))
             p;
       data_at Tsh (tarray tdouble MAXW)
-        (map fst (fst (iterk (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg) dt BG X (map fst wx) (Z.to_nat (k + 1)))) ++
+        (map fst (fst (iterk D (map fst wx) (Z.to_nat (k + 1)))) ++
          Zrepeat Vundef (MAXW - Zlength wx))
         v_theta;
       densematn sh (map_mx Some X) Xp; densematn sh (map_mx Some BG) Bp;
       fold_right sepcon emp (map (wx_to_wavedata sh) wx)))).
 Proof.
 intros.
-rewrite Zlength_map.
 assert (Hbgcol :=bg_col_range (N_range Hfr) (N_range2 Hbg)  (Ordinal Hk)).
 unfold iterk.
 replace (Z.to_nat (k+1)) with (Z.to_nat k + 1)%nat by lia.
 rewrite <- firstn_app.
 change (@app ('I_(S Nfr))) with (@seq.cat ('I_(S Nfr))).
 rewrite seq.foldl_cat.
+fold Nfr.
 set (u := seq.foldl _ _ (firstn (Z.to_nat k) (ord_enum (S Nfr)))).
 assert (Hθ: map snd (fst u) = map fst wx). {
  forget (firstn (Z.to_nat k) (ord_enum (S Nfr))) as L.
@@ -1168,7 +1183,7 @@ repeat change (fst (?A,?B)) with A.
 rewrite <- all_iteri.
 unfold synthesize_i_loop.
 abbreviate_semax.
-set (iteri_upto i := seq.foldl (one_iteri (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg) dt BG X (Ordinal Hk)) (θw, (energy, diff_sum)) (sublist 0 i (ord_enum (S Nb)))).
+set (iteri_upto i := seq.foldl (one_iteri D (Ordinal Hk)) (θw, (energy, diff_sum)) (sublist 0 i (ord_enum (S Nb)))).
 set (θw'' i := fst (iteri_upto (i+1))).
 forward_for_simple_bound (Z.of_nat (S Nb)) (EX i:Z,
      (PROP ( )
@@ -1183,7 +1198,7 @@ forward_for_simple_bound (Z.of_nat (S Nb)) (EX i:Z,
       temp _Nb (Vint (Int.repr (Z.of_nat (S Nb)))); temp _Nw (Vint (Int.repr (Zlength wx)));
       lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
       SEP (data_at sh tdata (Xp, (Bp, (Vint (Int.repr (Z.of_nat (S Nb))), (Vint (Int.repr (Z.of_nat (S Nfr))),
-               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength (map fst wx))))))))))
+               (Vint (Int.repr (Z.of_nat (S Nbg))), (Vfloat dt, (map wx_to_waverep wx, Vint (Int.repr (Zlength wx)))))))))
             p;
       data_at Tsh (tarray tdouble MAXW)
         (map fst (fst (iteri_upto i)) ++ Zrepeat Vundef (MAXW - Zlength wx))
@@ -1208,7 +1223,7 @@ rewrite (Binary_Btrunc_Zoffloat _ _ H1). lia.
 unfold map_mx; rewrite mxE; auto.
 destruct (iteri_upto i) as [θw' [energy'  diff_sum']] eqn:?H.
 simpl fst; simpl snd.
-set (ew := map (fun f: matrix (ftype Tdouble) (S Nb) 1%nat => fun_of_matrix f i' ord0) (map (waveform (N_range Hfr) (N_range1 Hfr) dt (Ordinal Hk)) (θw'' i))).
+set (ew := map (fun f: matrix (ftype Tdouble) (S Nb) 1%nat => fun_of_matrix f i' ord0) (map (waveform D (Ordinal Hk)) (θw'' i))).
 eapply semax_seq.
 +
 apply semax_synthesize_w_loop; auto.
@@ -1237,7 +1252,7 @@ unfold iteri_upto.
 pose proof (Zlength_ord_enum (S Nb)).
 rewrite (sublist_split 0 i) by list_solve.
 change @app with @seq.cat; rewrite seq.foldl_cat.
-fold (iteri_upto i).
+change (seq.foldl _ (_,(_,_)) _) with (iteri_upto i).
 rewrite H1.
 rewrite sublist_len_1 by list_solve.
 unfold seq.foldl at 1 2.
@@ -1250,7 +1265,6 @@ split; f_equal; f_equal.
 unfold iteri_upto.
 pose proof (Zlength_ord_enum (S Nb)).
 rewrite (sublist_same 0 (Z.of_nat (S Nb))) by list_solve.
-rewrite Zlength_map.
 entailer!!.
 Qed.
 
@@ -1275,7 +1289,13 @@ forward.
 simpl offset_val.
 assert_PROP (field_compatible tdata (DOT _waves) p) as Hp by entailer!.
 replace (offset_val 40 p) with (field_address tdata (DOT _waves) p) by (rewrite field_address_offset; auto).
-destruct d. simpl in H; simpl. subst waves.
+rename H into Hwx.
+set (Nb := Data.Nb d).
+set (Nfr := Data.Nfr d).
+set (Nbg := Data.Nbg d).
+set (Hfr := Data.Hfr d).
+set (Hbg := Data.Hbg d).
+set (dt := Data.dt d).
 assert (Hfr': Z.of_nat (S Nb * S Nfr) <= Int.max_signed) by (destruct Hfr; rewrite <- ssrnat.mulnE; auto).
 assert (Hbg': Z.of_nat (S Nb * S Nbg) <= Int.max_signed) by (rewrite <- ssrnat.mulnE; auto).
 assert_PROP (Zlength wx <= MAXW) as H1. {
@@ -1290,26 +1310,26 @@ change (Float.of_bits (Int64.repr 0)) with (Zconst Tdouble 0).
 forward_for_simple_bound (Z.of_nat (S Nfr)) 
   (EX k:Z, 
    PROP()
-   LOCAL (temp _energy (Vfloat (fst (snd (iterk (N_range Hfr) (N_range1 Hfr) (N_range2 Hbg) dt BG X (map fst wx) (Z.to_nat k)))));
-   temp _diff_sum (Vfloat (snd (snd (iterk (N_range Hfr)  (N_range1 Hfr) (N_range2 Hbg) dt BG X (map fst wx) (Z.to_nat k)))));
+   LOCAL (temp _energy (Vfloat (fst (snd (iterk d (map fst wx) (Z.to_nat k)))));
+   temp _diff_sum (Vfloat (snd (snd (iterk d (map fst wx) (Z.to_nat k)))));
    temp _X Xp; temp _BG Bp; temp _waves (field_address tdata (DOT _waves) p); temp _dt (Vfloat dt);
    temp _Nbg (Vint (Int.repr (S Nbg))); temp _Nfr (Vint (Int.repr (S Nfr)));
-   temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength (map fst wx))));
+   temp _Nb (Vint (Int.repr (S Nb))); temp _Nw (Vint (Int.repr (Zlength wx)));
    lvar _theta (tarray tdouble MAXW) v_theta; temp _data p)
    SEP (FRZL FR1; 
    data_at Tsh (tarray tdouble MAXW) 
-       (map fst (fst (iterk (N_range Hfr) (N_range1 Hfr)  (N_range2 Hbg) dt BG X (map fst wx) (Z.to_nat k))) ++ Zrepeat Vundef (MAXW-Zlength wx)) v_theta; 
-   densematn sh (map_mx Some X) Xp;
-   densematn sh (map_mx Some BG) Bp;
+       (map fst (fst (iterk d (map fst wx) (Z.to_nat k))) ++ Zrepeat Vundef (MAXW-Zlength wx)) v_theta; 
+   densematn sh (map_mx Some (Data.X d)) Xp;
+   densematn sh (map_mx Some (Data.BG d)) Bp;
    fold_right sepcon emp (map (wx_to_wavedata sh) wx)))%assert.
 - 
   unfold iterk. simpl firstn. unfold seq.foldl. simpl fst. simpl snd.
-  entailer!!.
+  entailer!!. rewrite <- Hwx, Zlength_map; auto.
   apply data_at__data_at. change @seq.map with @map. rewrite !map_map. simpl.
   transitivity (Zrepeat Vundef (Zlength wx) ++ Zrepeat Vundef (MAXW-Zlength wx)).
   f_equal.
-  induction wx; auto. rewrite Zlength_cons. unfold Z.succ. rewrite Z.add_comm. rewrite <-Zrepeat_app by rep_lia.
-  simpl. f_equal; auto. apply IHwx.  list_solve.
+  clear; induction wx; auto. rewrite Zlength_cons. unfold Z.succ. rewrite Z.add_comm. rewrite <-Zrepeat_app by rep_lia.
+  simpl. f_equal; auto.
   unfold default_val; simpl. list_solve.
 -
 rename i into k.
@@ -1333,17 +1353,18 @@ rewrite H0. reflexivity.
 clear H0.
 subst POSTCONDITION; unfold abbreviate.
 thaw FR1.
+rewrite <- Hwx, Zlength_map.
+subst Nb Nfr Nbg dt.
 apply semax_synthesize_i_loop; auto.
 -
  thaw FR1.
  forward.
- unfold synth_err. 
- set (d := Data.Build_t _ _ _ _ _ _ _).
- rewrite !Nat2Z.id.
- set (u := iterk _ _ _ _ _). clearbody u; destruct u as [? [? ?]].
- simpl. 
- rewrite prop_true_andp by auto.
- set (foo := _ ++ _). clearbody foo.
+ rewrite prop_true_andp. 2:{
+   unfold synth_err. rewrite !Nat2Z.id, Hwx.
+   fold Nfr.
+    destruct (iterk d (Data.waves d) (S Nfr)) as [? [? ?]].
+   auto.
+}
  unfold data_rep.
  Exists Xp Bp wx. simpl.
  rewrite <- MAXW_eq.
