@@ -375,6 +375,55 @@ Definition interpolate_real [n Nfr: nat] (Hfr: (1 < Z.of_nat (Nfr.+1)<=Int.max_s
          then ((j+1)-a) * y ord0 (inord (Z.to_nat j)) + (a-j)*(y ord0 (inord (Z.to_nat j+1)))
          else  y ord0 (inord (Z.to_nat j)).
 
+Definition v_real  : 'M[R]_(Nw, Nfr.+1) :=
+ \matrix_(w,k) interpolate_real  (N_range Hfr) (Wave.Hn (W w ord0)) (Wave.v (W w ord0)) (inord (subn k 1)).
+
+Definition A_real  : 'M[R]_(Nw, Nfr.+1) :=
+ \matrix_(w,k) interpolate_real  (N_range Hfr) (Wave.Hn (W w ord0)) (Wave.A (W w ord0)) (inord k).
+
+Definition σ_real  : 'M[R]_(Nw, Nfr.+1) :=
+ \matrix_(w,k) interpolate_real  (N_range Hfr) (Wave.Hn (W w ord0)) (Wave.σ (W w ord0)) (inord k).
+
+
+Definition range2pi_real (x: R) : R :=
+            x-L*floor(x/L).
+
+Definition wrap_real (x: R) : R :=
+     range2pi_real (x+Rtrigo1.PI) - Rtrigo1.PI .
+
+Definition θw_real: 'M[R]_(Nw, Nfr.+1) :=
+  \matrix_(w,k)
+      \big[Rplus/0]_(j  < 1+k) match split j with
+              | inl _ => FT2R (Wave.θ0 (W w ord0))
+              | inr j' =>  range2pi_real (v_real w (inord j') * Data.dt D)
+              end.
+
+
+Definition dx_real (w: 'I_Nw) : 'M[R]_(Nb.+1,Nfr.+1) :=
+   \matrix_(i,k) wrap_real ( i * (L / IZR Nb) - θw_real w k).
+
+Definition waveform_real (w: 'I_Nw) : 'M[R]_(Nb.+1, Nfr.+1) :=
+  \matrix_(i,k) let dx := dx_real w i k in let σ := σ_real w k in
+  (A_real w k * Rtrigo_def.exp (- dx*dx / (2 * (σ * σ)))).
+
+Definition SIGNAL_real : 'M[R]_(Nb.+1,Nfr.+1) :=
+  \matrix_(i,k) \big[Rplus/0]_(w' < 1+Nw) 
+          match split w' with
+           | inl _ => FT2R (BG_matrix i k)
+           | inr w => waveform_real w i k
+           end.
+
+Definition energy_sum_real := \big[Rplus/0]_k  Rbasic_fun.Rabs(col_maj (Data.X D) k ord0).
+
+Definition mxsubtract_real [m n] (A B: 'M[R]_(m,n)) : 'M[R]_(m,n) :=
+  \matrix_(i,j) (A i j - B i j).
+
+Definition diff_sum_real := 
+   \big[Rplus/0]_k Rbasic_fun.Rabs (col_maj (mxsubtract_real (map_mx FT2R (Data.X D)) SIGNAL_real) k ord0).
+
+Definition result_real := diff_sum_real / energy_sum_real.
+
+
 End Reals.
 
 End WAVE_MATRIX.
