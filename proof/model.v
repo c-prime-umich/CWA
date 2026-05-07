@@ -51,8 +51,8 @@ Record t := {
 }.
 End Data.
 
-Definition Fsum {NAN: FPCore.Nans} {t: type} [n: nat] (f: 'I_n -> ftype t) : ftype t :=
-  foldl BPLUS common.pos_zero (map f (ord_enum n)).
+Definition Fsum {NAN: FPCore.Nans} {t: type} (base: ftype t) [n: nat] (f: 'I_n -> ftype t) : ftype t :=
+  foldl BPLUS base (map f (ord_enum n)).
 
 Definition M_PI : ftype Tdouble := 3.141592653589793%F64.
 
@@ -205,16 +205,13 @@ Definition BGval (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
       BG i (Ordinal  (getBG_col (N_range Hfr)  (N_range2 Hbg) k)).
 
 Definition signal (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
-      Fsum (fun w': 'I_(1+Nw) => match split w' with
-           | inl _ => BGval i k
-           | inr w => waveform w i k
-           end).
+      Fsum (BGval i k) (fun w: 'I_(Nw) => waveform w i k).
 
 Definition energy_sum := 
-    Fsum (fun k => BABS (col_maj (Data.X D) k ord0)).
+    Fsum common.pos_zero (fun k => BABS (col_maj (Data.X D) k ord0)).
 
 Definition diff_sum := 
-   Fsum (fun k => BABS (col_maj (\matrix_(i,k) (Data.X D i k - signal i k)%F64) k ord0)).
+   Fsum common.pos_zero (fun k => BABS (col_maj (\matrix_(i,k) (Data.X D i k - signal i k)%F64) k ord0)).
 
 Definition result := (diff_sum / energy_sum)%F64.
 
@@ -478,16 +475,6 @@ auto.
 Qed.
 Definition diff : 'M_(Nb.+1,Nfr.+1) := \matrix_(i,k) (BMINUS (X i k) (Fmodel.signal D i k)).
 
-(*
-Search (ordinal _ -> ordinal _).
-Definition col_maj_aux2 (k: nat) (Hk: (k <= Nfr.+1)%N) : 'I_(Nb.+1*Nfr.+1).
- refine (@Ordinal (Nb.+1*Nfr.+1) k _).
-clear - Hk.
-
-nia.
-*)
-
-
 Lemma Fmodel_signal_eq:
  forall (k: 'I_Nfr.+1) (i: 'I_Nb.+1),
   Fmodel.signal D i k =
@@ -502,14 +489,74 @@ fun_of_matrix
                 [seq Pmodel.updateθ D k i
                    | i <- [seq (θw_prev w k, nth a_wave waves (nat_of_ord w)) | w <- ord_enum Nw]]])
   i ord0.
+Proof.
+intros.
+unfold Fmodel.signal.
+unfold Fmodel.BGval, Fmodel.waveform. fold waves. fold BG. fold Hfr. fold Hbg.
+set c := Ordinal _. clearbody c.
+unfold Fsum.
+fold Nw.
+replace (fun_of_matrix BG i c) with (col c BG i ord0) by apply mxE.
+set BGc := col c BG.
+set BGci := BGc i ord0.
+assert (BGci = BGc i ord0) by reflexivity.
+clearbody BGc. clearbody BGci. clear c BG.
+replace         (if eq_op k ord0
+            then
+             map (fun w : prod Values.val Wave.t => pair (Vfloat (Wave.θ0 (snd w))) (snd w))
+               (map (fun w : ordinal Nw => pair (θw_prev w (nat_of_ord k)) (nth a_wave waves (nat_of_ord w))) (ord_enum Nw))
+            else
+             map (fun i0 : prod Values.val Wave.t => Pmodel.updateθ D k i0)
+               (map (fun w : ordinal Nw => pair (θw_prev w (nat_of_ord k)) (nth a_wave waves (nat_of_ord w))) (ord_enum Nw)))
+ with (map (if eq_op k ord0 then (fun w =>  pair (Vfloat (Wave.θ0 (snd w))) (snd w))
+              else Pmodel.updateθ D k)
+           (map (fun w : ordinal Nw => pair (θw_prev w (nat_of_ord k)) (nth a_wave waves (nat_of_ord w)))
+              (ord_enum Nw)))
+   by (destruct (eq_op k ord0); auto).
+ rewrite -!map_comp /comp.
+ revert BGc BGci H;  induction (ord_enum Nw); intros; auto.
+ change (map ?F (cons a l)) with (F a :: map F l).
+ repeat change (foldl ?F ?A (cons ?B ?L)) with (foldl F (F A B) L).
+ apply IHl. clear IHl.
+ unfold F.addmx. rewrite mxE -H.
+ f_equal.
+ clear BGc BGci H l.
+ unfold Fmodel.A, Fmodel.dx, Fmodel.σ.
+ set (w := Fmodel.W D a ord0).
+ replace (nth a_wave waves (nat_of_ord a)) with w
+   by (subst w; unfold Fmodel.W; rewrite mxE; auto).
+clearbody w.
+simpl in w.
+unfold Pmodel.waveform.
+unfold Fmodel.θw.
+unfold θw_prev.
+change (eq_op (nat_of_ord k) O) with (eq_op k ord0).
+destruct (eq_op k ord0) eqn:?H.
+-
+fold (is_true (k==ord0)) in H.
+rewrite boolp.eq_opE in H. subst k.
+change (nat_of_ord ord0) with O.
+rewrite mxE.
+f_equal.
+f_equal.
+apply ord_inj; rewrite inordK; auto.
+f_equal.
+admit.
+-
+unfold Pmodel.updateθ. rewrite mxE.
+f_equal. f_equal.
+apply ord_inj; rewrite inordK; auto.
+f_equal.
+admit.
+
 Admitted.
 
 Lemma OK_iterk_partial: forall k: nat, 
    (k <= Nfr.+1)%N ->
   foldl (Pmodel.one_iterk D) (Pmodel.initial_values waves) (take k (ord_enum Nfr.+1)) = 
     (map (fun w => (θw_prev w k, nth a_wave waves w)) (ord_enum Nw), 
-      (Fsum (fun j : 'I_(Nb.+1 * k) => BABS (fun_of_matrix (col_maj X) (inord j) ord0)),
-       Fsum (fun j : 'I_(Nb.+1 * k) => BABS (fun_of_matrix (col_maj diff) (inord j) ord0)))).
+      (Fsum common.pos_zero (fun j : 'I_(Nb.+1 * k) => BABS (fun_of_matrix (col_maj X) (inord j) ord0)),
+       Fsum common.pos_zero (fun j : 'I_(Nb.+1 * k) => BABS (fun_of_matrix (col_maj diff) (inord j) ord0)))).
 Proof.
 unfold Pmodel.initial_values.
 change (Zconst Tdouble 0) with (@common.pos_zero Tdouble).
