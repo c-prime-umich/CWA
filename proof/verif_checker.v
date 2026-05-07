@@ -372,14 +372,6 @@ Section Inside_Synthesize.
   Context
   {Espec : OracleKind} 
   (D : Data.t)
-(*
-  [Nfr Nb Nbg]
-  (Hfr : 1 < Z.of_nat (S Nfr) /\ Z.of_nat (S Nb * S Nfr) <= Int.max_signed)
-  (Hbg : Z.of_nat (S Nb * S Nbg) <= Int.max_signed)
-  (dt : float)
-  (BG : 'M[ftype Tdouble]_(S Nb, S Nbg))
-  (X : 'M[ftype Tdouble]_(S Nb, S Nfr))
-*)
   (Xp Bp  p v_theta: val)
   (wx : list (Wave.t * (val * val * val)))
   (Hwx : Zlength wx <= MAXW)
@@ -660,7 +652,7 @@ cbv match.
 pose (Y := existT _ N (Hn,A)  :   {Nt: nat &  ((Z.of_nat (S Nt) <= Int.max_signed) * 'rV[ftype Tdouble]_(S Nt))}).
 pose (K := existT _ Nfr (N_range Hfr,(Ordinal Hk)) :  {Nfr & ((1 < Z.of_nat (S Nfr) <= Int.max_signed) * 'I_(S Nfr))}).
 forward_call (sh,Y, Ap, K).
-simpl firstn.
+progress simpl firstn.
 rewrite Float_of_int_e.  replace (Z.of_nat (Ordinal Hk)) with k by (simpl; lia).
 entailer!!.
 rep_lia.
@@ -674,7 +666,7 @@ entailer!. clear - H21; destruct H21; auto.
 cbv match.
 pose (Y := existT _ N (Hn,σ) :  {N:nat & ((Z.of_nat (S N) <= Int.max_signed) * 'rV[ftype Tdouble]_(S N))}).
 forward_call (sh,Y, σp, K).
-simpl firstn.
+progress simpl firstn.
 rewrite Float_of_int_e.  replace (Z.of_nat (Ordinal Hk)) with k by (simpl; lia).
 entailer!!.
 rep_lia.
@@ -1047,10 +1039,15 @@ Lemma iterk_defined_θ: forall
  (θed : list (val * Wave.t) * (ftype Tdouble * ftype Tdouble))
  (H1 : k <> 0),
 Forall (is_float oo fst)
-  (fst (seq.foldl (one_iterk D) θed (firstn (Z.to_nat k) (ord_enum (S Nfr))))).
+  (fst (seq.foldl (one_iterk D) θed (seq.take (Z.to_nat k) (ord_enum (S Nfr))))).
 Proof.
 intros.
 pose proof (Zlength_ord_enum (S Nfr)).
+replace @seq.take with @firstn.
+2:{
+clear. extensionality t i al.
+revert al; induction i; destruct al; simpl; intros; f_equal; auto.
+}
 rewrite <- sublist_firstn.
 rewrite (sublist_split 0 1 k)  by list_solve.
 change @app with @seq.cat; rewrite seq.foldl_cat.
@@ -1138,13 +1135,13 @@ intros.
 assert (Hbgcol :=bg_col_range (N_range Hfr) (N_range2 Hbg)  (Ordinal Hk)).
 unfold iterk.
 replace (Z.to_nat (k+1)) with (Z.to_nat k + 1)%nat by lia.
-rewrite <- firstn_app.
-change (@app ('I_(S Nfr))) with (@seq.cat ('I_(S Nfr))).
+rewrite seq.takeD.
+(*change (@app ('I_(S Nfr))) with (@seq.cat ('I_(S Nfr))).*)
 rewrite seq.foldl_cat.
 fold Nfr.
-set (u := seq.foldl _ _ (firstn (Z.to_nat k) (ord_enum (S Nfr)))).
+set (u := seq.foldl _ _ (seq.take (Z.to_nat k) (ord_enum (S Nfr)))).
 assert (Hθ: map snd (fst u) = map fst wx). {
- forget (firstn (Z.to_nat k) (ord_enum (S Nfr))) as L.
+ forget (seq.take (Z.to_nat k) (ord_enum (S Nfr))) as L.
  clear; subst u.
  unfold initial_values.
  change @seq.map with @map.
@@ -1166,15 +1163,18 @@ assert (Hk0: k <> 0 -> Forall (is_float oo fst) θw). {
 }
 clearbody u. clear H0 u. 
 simpl in Hθ.
-replace (firstn 1 (skipn (Z.to_nat k) (ord_enum (S Nfr)))) with [@Znth _ ord0 k (ord_enum (S Nfr))].
+replace (seq.take 1 (seq.drop (Z.to_nat k) (ord_enum (S Nfr)))) with [@Znth _ ord0 k (ord_enum (S Nfr))].
 2:{
-change 1%nat with (Z.to_nat 1).
-rewrite <- sublist_firstn.
-rewrite <- sublist_skip by lia.
-assert (Zlength (ord_enum (S Nfr)) = Z.of_nat (S Nfr)).
-rewrite Zlength_correct, mv_mathcomp.size_ord_enum; auto.
-autorewrite with sublist.
-symmetry; apply sublist_one; try lia.
+rewrite <-nth_Znth by (rewrite Zlength_ord_enum; lia).
+pose proof (mv_mathcomp.size_ord_enum (S Nfr)).
+rewrite nth_seq_nth.
+assert (Z.to_nat k < S Nfr)%nat by lia.
+clear - H0 H1. forget (ord_enum (S Nfr)) as al.
+forget (Z.to_nat k) as i.
+assert (i < seq.size al)%nat by lia. clear H1 H0.
+revert i H; induction al; destruct i; simpl; intros; f_equal; auto; try lia.
+rewrite seq.take0; auto.
+apply IHal. lia.
 }
 change (seq.foldl ?A ?B [?C]) with (A B C).
 rewrite (Znth_ord_enum Hk) by lia; auto.
@@ -1323,7 +1323,7 @@ forward_for_simple_bound (Z.of_nat (S Nfr))
    densematn sh (map_mx Some (Data.BG d)) Bp;
    fold_right sepcon emp (map (wx_to_wavedata sh) wx)))%assert.
 - 
-  unfold iterk. simpl firstn. unfold seq.foldl. simpl fst. simpl snd.
+  unfold iterk.  change (Z.to_nat 0) with O. rewrite seq.take0. unfold seq.foldl. simpl fst. simpl snd.
   entailer!!. rewrite <- Hwx, Zlength_map; auto.
   apply data_at__data_at. change @seq.map with @map. rewrite !map_map. simpl.
   transitivity (Zrepeat Vundef (Zlength wx) ++ Zrepeat Vundef (MAXW-Zlength wx)).

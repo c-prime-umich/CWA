@@ -51,6 +51,9 @@ Record t := {
 }.
 End Data.
 
+Definition Fsum {NAN: FPCore.Nans} {t: type} [n: nat] (f: 'I_n -> ftype t) : ftype t :=
+  foldl BPLUS common.pos_zero (map f (ord_enum n)).
+
 Definition M_PI : ftype Tdouble := 3.141592653589793%F64.
 
 Definition L := BMULT (Zconst Tdouble 2) M_PI.
@@ -151,6 +154,19 @@ Qed.
 Definition col_maj [m n T] (A: 'M[T]_(m,n)) : 'cV[T]_(m*n) :=
   castmx (col_maj_aux _ _) (\mxcol_(j<n) col j A).
 
+Lemma col_majE: forall {t} [m n] (X: 'M[t]_(m,n)) (i: 'I_m) (j: 'I_n) (ij: 'I_(m*n)),
+     (nat_of_ord ij = nat_of_ord i + nat_of_ord j * m)%N ->
+  fun_of_matrix (col_maj X) ij ord0 = fun_of_matrix X i j.
+Admitted.
+
+Lemma col_majE': forall {t} [m n] (X: 'M[t]_(m,n)) (i: 'I_m) (j: 'I_n)
+    (H : (i + j * m < m * n)%N),
+  fun_of_matrix (col_maj X) (Ordinal H) ord0 = fun_of_matrix X i j.
+Proof.
+intros.
+apply col_majE. simpl. lia.
+Qed.
+
 Module Fmodel.
 
 Section DATA.
@@ -163,11 +179,12 @@ Let waves := Data.waves D.
 Let Hfr: 1 < Z.of_nat (Data.Nfr D).+1 /\ Z.of_nat ((Data.Nb D).+1 * (Data.Nfr D).+1) <= Int.max_signed := Data.Hfr D.
 Let Hbg : Z.of_nat (Nb.+1 * Nbg.+1) <= Int.max_signed := Data.Hbg D.
 Let Nw : nat := seq.size waves.
+Let dt := Data.dt D.
 
 Definition W : 'cV[Wave.t]_Nw := \col_w seq.nth a_wave waves w.
 
 Definition v (w: 'I_Nw) (k: 'I_Nfr.+1) : ftype Tdouble :=
-   interpolate  (N_range Hfr) (Wave.Hn (W w ord0)) (Wave.v (W w ord0)) (inord (k-1)%N).
+   interpolate  (N_range Hfr) (Wave.Hn (W w ord0)) (Wave.v (W w ord0)) k.
 
 Definition A (w: 'I_Nw) (k: 'I_Nfr.+1) : ftype Tdouble :=
    interpolate  (N_range Hfr) (Wave.Hn (W w ord0)) (Wave.A (W w ord0)) (inord k).
@@ -175,12 +192,8 @@ Definition A (w: 'I_Nw) (k: 'I_Nfr.+1) : ftype Tdouble :=
 Definition σ  (w: 'I_Nw) (k: 'I_Nfr.+1) : ftype Tdouble :=
    interpolate  (N_range Hfr) (Wave.Hn (W w ord0)) (Wave.σ (W w ord0)) (inord k).
 
-
-Definition θw (w: 'I_Nw) (k: 'I_Nfr.+1) : ftype Tdouble :=
-      F.sum  (fun j : 'I_(1+k)=> match split j with
-              | inl _ => Wave.θ0 (W w ord0)
-              | inr j' =>  range2pi (v w (inord j') * Data.dt D)%F64
-              end).
+Definition θw  (w: 'I_Nw) (k: 'I_Nfr.+1) : ftype Tdouble :=
+  foldl (fun (x: ftype Tdouble) (j: 'I_Nfr.+1) => range2pi (x + v w j * dt)%F64) (Wave.θ0 (W w ord0)) (take k (ord_enum Nfr.+1)).
 
 Definition dx (w: 'I_Nw) (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
     wrap (Zconst Tdouble (Z.of_nat i) * (L / Zconst Tdouble (Z.of_nat Nb)) - θw w k)%F64.
@@ -192,15 +205,16 @@ Definition BGval (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
       BG i (Ordinal  (getBG_col (N_range Hfr)  (N_range2 Hbg) k)).
 
 Definition signal (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
-      F.sum (fun w': 'I_(1+Nw) => match split w' with
+      Fsum (fun w': 'I_(1+Nw) => match split w' with
            | inl _ => BGval i k
            | inr w => waveform w i k
            end).
 
-Definition energy_sum := F.sum (fun k => BABS (col_maj (Data.X D) k ord0)).
+Definition energy_sum := 
+    Fsum (fun k => BABS (col_maj (Data.X D) k ord0)).
 
 Definition diff_sum := 
-   F.sum (fun k => BABS (col_maj (\matrix_(i,k) (Data.X D i k - signal i k)%F64) k ord0)).
+   Fsum (fun k => BABS (col_maj (\matrix_(i,k) (Data.X D i k - signal i k)%F64) k ord0)).
 
 Definition result := (diff_sum / energy_sum)%F64.
 
@@ -219,6 +233,7 @@ Let Hfr: 1 < Z.of_nat (Data.Nfr D).+1 /\ Z.of_nat ((Data.Nb D).+1 * (Data.Nfr D)
 Let Hfr':  1 < Z.of_nat Nfr.+1 /\  Z.of_nat (S Nfr) <= Int.max_signed := N_range Hfr.
 Let Hbg : Z.of_nat (Nb.+1 * Nbg.+1) <= Int.max_signed := Data.Hbg D.
 Let Nw : nat := seq.size waves.
+Let dt := Data.dt D.
 Import Rdefinitions Rcomplements.
 Import Fmodel.
 
@@ -234,7 +249,7 @@ Definition interpolate [n Nfr: nat] (Hfr: (1 < Z.of_nat (Nfr.+1)<=Int.max_signed
          else  y ord0 (inord (Z.to_nat j)).
 
 Definition v (w: 'I_Nw) (k: 'I_Nfr.+1) : R :=
-   interpolate  Hfr' (Wave.Hn (W D w ord0)) (Wave.v (W D w ord0)) (inord (subn k 1)).
+   interpolate  Hfr' (Wave.Hn (W D w ord0)) (Wave.v (W D w ord0)) k.
 
 Definition A (w: 'I_Nw) (k: 'I_Nfr.+1) : R :=
    interpolate Hfr' (Wave.Hn (W D w ord0)) (Wave.A (W D w ord0)) (inord k).
@@ -249,10 +264,7 @@ Definition wrap (x: R) : R :=
      range2pi (x+Rtrigo1.PI) - Rtrigo1.PI .
 
 Definition θw (w: 'I_Nw) (k: 'I_Nfr.+1) : R :=
-   \big[Rplus/0]_(j  < 1+k) match split j with
-              | inl _ => FT2R (Wave.θ0 (W D w ord0))
-              | inr j' =>  range2pi (v w (inord j') * Data.dt D)
-              end.
+  foldl (fun (x: R) (j: 'I_Nfr.+1) => range2pi (x + v w j * FT2R dt)) (FT2R (Wave.θ0 (W D w ord0))) (take k (ord_enum Nfr.+1)).
 
 Definition dx (w: 'I_Nw) (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : R :=
      wrap ( i * (L / IZR Nb) - θw w k).
@@ -293,7 +305,6 @@ Let Hbg : Z.of_nat (Nb.+1 * Nbg.+1) <= Int.max_signed := Data.Hbg D.
 Let Hbg' : Z.of_nat Nbg.+1 <= Int.max_signed := N_range2 Hbg.
 Let Nw : nat := seq.size waves.
 
-
 Definition waveform (k: 'I_Nfr.+1)  (θw: Values.val * Wave.t) : 'cV[ftype Tdouble]_Nb.+1 :=
  match θw with
  | (Vfloat θ, w) => 
@@ -333,7 +344,7 @@ Definition initial_values (waves: list Wave.t) :  (list (Values.val * Wave.t) * 
 
 Definition iterk (waves: list Wave.t) (k: nat) : 
      (list (Values.val * Wave.t) * (ftype Tdouble * ftype Tdouble)) :=
- foldl one_iterk (initial_values waves) (firstn k (ord_enum Nfr.+1)).
+ foldl one_iterk (initial_values waves) (take k (ord_enum Nfr.+1)).
 
 Definition one_iteri
       (k: 'I_Nfr.+1) :
@@ -360,7 +371,7 @@ intros.
 unfold one_iterk.
 destruct state as [θw [energy diff_sum]].
 set u := if _ then _ else _.
-rewrite -(firstn_skipn 1 (ord_enum (S Nb))).
+rewrite -(cat_take_drop 1 (ord_enum (S Nb))).
 destruct (ord_enum (S Nb)) eqn:?H; [pose proof (mv_mathcomp.size_ord_enum (S Nb)); rewrite H in H0; inv H0 |].
 simpl.
 assert (forallb (fun i => negb (eq_op i ord0)) l = true). {
@@ -401,7 +412,9 @@ clearbody d1.
 revert H0.
 rewrite -(revK l).
 set (r := rev l).
+
 clearbody r. clear l.
+rewrite take0. simpl cat. rewrite drop0.
 rewrite !map_rev.
 rewrite forallb_rev.
 rewrite !foldl_rev.
@@ -433,4 +446,264 @@ Definition synth_err: ftype Tdouble :=
 End DATA.
 End Pmodel.
 
-  
+Module Pmodel_Fmodel.
+Section DATA.
+Variable D: Data.t.
+Let Nb := Data.Nb D.
+Let Nfr := Data.Nfr D.
+Let Nbg := Data.Nbg D.
+Let dt := Data.dt D.
+Let BG := Data.BG D.
+Let waves := Data.waves D.
+Let Hfr: 1 < Z.of_nat (Data.Nfr D).+1 /\ Z.of_nat ((Data.Nb D).+1 * (Data.Nfr D).+1) <= Int.max_signed := Data.Hfr D.
+Let Hfr':  1 < Z.of_nat Nfr.+1 /\  Z.of_nat (S Nfr) <= Int.max_signed := N_range Hfr.
+Let Hbg : Z.of_nat (Nb.+1 * Nbg.+1) <= Int.max_signed := Data.Hbg D.
+Let Hbg' : Z.of_nat Nbg.+1 <= Int.max_signed := N_range2 Hbg.
+Let Nw : nat := seq.size waves.
+Let X := Data.X D.
+
+Definition θw_prev (w: 'I_Nw) (k:  nat) : Values.val :=
+    if (k==O) then Vundef else Vfloat (Fmodel.θw D w (inord (k-1))).
+
+Lemma map_ord_enum_inord:
+  forall {T} (f: nat -> T) (n: nat), map (comp f (@nat_of_ord n)) (ord_enum n) = map f (iota 0 n).
+Proof.
+clear.
+intros.
+rewrite map_comp.
+f_equal.
+rewrite <- val_ord_enum.
+simpl.
+auto.
+Qed.
+Definition diff : 'M_(Nb.+1,Nfr.+1) := \matrix_(i,k) (BMINUS (X i k) (Fmodel.signal D i k)).
+
+(*
+Search (ordinal _ -> ordinal _).
+Definition col_maj_aux2 (k: nat) (Hk: (k <= Nfr.+1)%N) : 'I_(Nb.+1*Nfr.+1).
+ refine (@Ordinal (Nb.+1*Nfr.+1) k _).
+clear - Hk.
+
+nia.
+*)
+
+
+Lemma Fmodel_signal_eq:
+ forall (k: 'I_Nfr.+1) (i: 'I_Nb.+1),
+  Fmodel.signal D i k =
+fun_of_matrix
+  (foldl (float_lemmas.F.addmx (n:=1)) (col (Ordinal (getBG_col (N_range Hfr) (N_range2 Hbg) k)) BG)
+     [seq Pmodel.waveform D k i
+        | i <- if k == ord0
+               then
+                [seq (Vfloat (Wave.θ0 w.2), w.2)
+                   | w <- [seq (θw_prev w k, nth a_wave waves (nat_of_ord w)) | w <- ord_enum Nw]]
+               else
+                [seq Pmodel.updateθ D k i
+                   | i <- [seq (θw_prev w k, nth a_wave waves (nat_of_ord w)) | w <- ord_enum Nw]]])
+  i ord0.
+Admitted.
+
+Lemma OK_iterk_partial: forall k: nat, 
+   (k <= Nfr.+1)%N ->
+  foldl (Pmodel.one_iterk D) (Pmodel.initial_values waves) (take k (ord_enum Nfr.+1)) = 
+    (map (fun w => (θw_prev w k, nth a_wave waves w)) (ord_enum Nw), 
+      (Fsum (fun j : 'I_(Nb.+1 * k) => BABS (fun_of_matrix (col_maj X) (inord j) ord0)),
+       Fsum (fun j : 'I_(Nb.+1 * k) => BABS (fun_of_matrix (col_maj diff) (inord j) ord0)))).
+Proof.
+unfold Pmodel.initial_values.
+change (Zconst Tdouble 0) with (@common.pos_zero Tdouble).
+unfold Fsum.
+induction k; intros.
+-
+simpl.
+replace (muln _ O) with O by lia.
+rewrite take0 //.
+unfold foldl.
+f_equal.
+pose proof mv_mathcomp.nth_ord_enum_lemma a_wave waves.
+etransitivity.
+rewrite H0; reflexivity.
+unfold comp.
+fold waves Nw.
+unfold θw_prev.
+rewrite eq_refl.
+rewrite -map_comp //.
+-
+rewrite (@take_nth _ (@ord0 Nfr)); [  |rewrite mv_mathcomp.size_ord_enum //].
+rewrite foldl_rcons.
+rewrite {}IHk; [ | lia].
+unfold Pmodel.one_iterk.
+f_equal.
++
+mv_mathcomp.ordify Nfr.+1 k.
+rewrite mv_mathcomp.nth_ord_enum'.
+destruct (_ == _) eqn:?H.
+*
+change(is_true (k == ord0)) in H0.
+rewrite boolp.eq_opE in H0. subst k.
+rewrite -map_comp /comp.
+simpl.
+f_equal.
+extensionality w.
+unfold θw_prev.
+Import mv_mathcomp.
+change (1%N==0%N) with false. simpl.
+f_equal.
+f_equal.
+simpl.
+unfold Fmodel.θw.
+rewrite inordK; [ | lia].
+change (subn _ _) with O.
+rewrite take0.
+simpl.
+f_equal.
+unfold Fmodel.W.
+rewrite mxE.
+reflexivity.
+*
+rewrite -map_comp /comp.
+f_equal.
+extensionality w.
+unfold Pmodel.updateθ.
+unfold θw_prev at 1.
+assert (nat_of_ord k == nat_of_ord (@ord0 Nfr) = false) by (destruct (k == ord0) eqn:?H; auto).
+simpl in H1. rewrite H1.
+f_equal.
+unfold θw_prev.
+replace (_ == _) with false by (destruct ((nat_of_ord k).+1 == 0)%N eqn:?H; lia).
+f_equal.
+replace ((nat_of_ord k).+1-1)%N with (((nat_of_ord k)-1)+1)%N by lia.
+unfold Fmodel.θw.
+rewrite !inordK; try lia.
+rewrite takeD.
+rewrite foldl_cat.
+set (u := foldl _ (Wave.θ0 _) _). clearbody u.
+fold Nfr.
+replace (take 1 (drop (nat_of_ord k - 1) (ord_enum Nfr.+1))) with [::nth ord0 (ord_enum Nfr.+1) (nat_of_ord k-1)].
+2:{
+assert (nat_of_ord k - 1 < size (ord_enum Nfr.+1))%N by (rewrite size_ord_enum; lia).
+clear - H1 H2.
+forget (ord_enum Nfr.+1) as al.
+forget (nat_of_ord k - 1)%N as i.
+clear - H1 H2.
+revert i H1 H2; induction al; destruct i;  simpl; intros; auto; try lia.
+rewrite take0//.
+}
+simpl.
+f_equal.
+f_equal.
+unfold Fmodel.v.
+f_equal. 
+fold waves.
+f_equal.
+f_equal.
+rewrite mxE.
+replace (nat_of_ord k - 1)%N with (nat_of_ord (@inord Nfr (k-1))).
+2: rewrite inordK; lia.
+rewrite nth_ord_enum'.
+rewrite inordK; try lia.
+auto.
++
+f_equal.
+*
+fold Nb. fold X.
+fold Nfr in X|-*. fold Nb in X|-*.
+fold addn.
+change (_ Nfr (_ Nb (S Nfr))) with (addn Nfr (muln Nb (S Nfr))).
+pose proof (@nth_ord_enum' (S Nfr)) (Ordinal H) ord0. simpl in H0. rewrite {}H0.
+rewrite -foldl_cat.
+f_equal.
+clearbody X.
+ clear - H. clearbody Nb. clearbody Nfr. clear - H.
+set f := fun _ => _.
+set g := fun _ => _.
+set h := fun _ => _.
+change f with (comp (fun i => BABS (col_maj X (@inord (Nfr+(Nb*Nfr.+1)) i) ord0)) (@nat_of_ord (muln (S Nb) k))). clear f.
+change h with (comp (fun i => BABS (fun_of_matrix (col_maj X) (inord i) ord0)) (@nat_of_ord (muln (S Nb) (S k)))). clear h.
+replace g with (comp (fun i => BABS (X (inord i) (Ordinal H))) (@nat_of_ord (S Nb))) 
+  by (extensionality i; subst g; simpl; f_equal; f_equal; apply inord_val).
+clear g.
+rewrite !map_ord_enum_inord.
+set f := fun _ => _.
+replace (map _ (iota 0 (S Nb))) with (map f (iota (muln (S Nb) k) (S Nb))).
+rewrite -map_cat - iotaD. f_equal. f_equal. lia. subst f.
+replace (iota (muln (S Nb) k) (S Nb)) with (iota (addn (muln (S Nb) k) 0) (S Nb)) by (f_equal; lia).
+rewrite iotaDl.
+rewrite -map_comp.
+apply eq_in_map.
+intros i H0.
+rewrite mem_iota in H0. simpl in H0. replace (addn 0 (S Nb)) with (S Nb) in H0 by lia.
+replace (inord i) with (Ordinal H0) by (apply ord_inj; rewrite inordK; auto).
+rewrite /comp.
+f_equal.
+apply col_majE.
+simpl. etransitivity. apply inordK. nia. lia.
+*
+fold X.
+fold Nfr in X|-*. fold Nfr in Hfr, X|-*. fold Nb in BG, Hfr,X|-*. fold Nbg in Hbg,BG|-*.
+fold Hfr. fold Hbg. fold BG. clearbody BG.
+fold addn.
+change (_ Nfr (_ Nb (S Nfr))) with (addn Nfr (muln Nb (S Nfr))).
+pose proof (@nth_ord_enum' (S Nfr)) (Ordinal H) ord0. simpl in H0. rewrite {}H0.
+rewrite -foldl_cat.
+f_equal.
+clearbody X.
+clearbody Hfr. clearbody Hbg. fold Nb.
+set f := fun _ => _.
+set g := fun _ => _.
+set h := fun _ => _.
+change f with (comp (fun i => BABS (col_maj diff (@inord (Nfr+(Nb*Nfr.+1)) i) ord0)) (@nat_of_ord (muln (S Nb) k))). clear f.
+change h with (comp (fun i => BABS (fun_of_matrix (col_maj diff) (inord i) ord0)) (@nat_of_ord (muln (S Nb) (S k)))). clear h.
+replace g with (comp (fun i => BABS (diff (inord i) (Ordinal H))) (@nat_of_ord (S Nb))).
+2:{
+extensionality i; subst g; simpl. f_equal. unfold diff. 
+rewrite mxE.
+rewrite inord_val.
+f_equal.
+apply Fmodel_signal_eq.
+}
+clear g.
+rewrite !map_ord_enum_inord.
+set f := fun _ => _.
+replace (map _ (iota 0 (S Nb))) with (map f (iota (muln (S Nb) k) (S Nb))).
+rewrite -map_cat - iotaD. f_equal. f_equal. lia. subst f.
+replace (iota (muln (S Nb) k) (S Nb)) with (iota (addn (muln (S Nb) k) 0) (S Nb)) by (f_equal; lia).
+rewrite iotaDl.
+rewrite -map_comp.
+apply eq_in_map.
+intros i H0.
+rewrite mem_iota in H0. simpl in H0. replace (addn 0 (S Nb)) with (S Nb) in H0 by lia.
+replace (inord i) with (Ordinal H0) by (apply ord_inj; rewrite inordK; auto).
+rewrite /comp.
+f_equal.
+assert ( is_true (i + k * Nb.+1 < Nb.+1 * Nfr.+1)%N) by nia.
+replace (inord (Nb.+1*k+i)) with (@Ordinal (S (Nfr + Nb * Nfr.+1))  _ H1)
+  by (apply ord_inj; rewrite inordK; simpl; lia).
+apply (col_majE diff (Ordinal H0) (Ordinal H) (Ordinal H1)); auto.
+Qed.
+
+Lemma OK_iterk: snd (Pmodel.iterk D waves Nfr.+1) = (Fmodel.energy_sum D, Fmodel.diff_sum D).
+Proof.
+unfold Pmodel.iterk.
+unfold Fmodel.energy_sum, Fmodel.diff_sum.
+fold Nfr. fold Nb.
+rewrite OK_iterk_partial; [ | lia].
+unfold snd.
+do 2 f_equal; extensionality k; f_equal; f_equal; apply inord_val.
+Qed.
+
+Lemma REL_synth_err: Pmodel.synth_err D = Fmodel.result D.
+Proof.
+unfold Pmodel.synth_err, Fmodel.result.
+fold Nfr.
+pose proof OK_iterk.
+fold waves.
+destruct (Pmodel.iterk D waves Nfr.+1) as [? [? ?]].
+inv H.
+auto.
+Qed.
+
+End DATA.
+End Pmodel_Fmodel.
+
