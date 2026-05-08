@@ -196,10 +196,10 @@ Definition θw  (w: 'I_Nw) (k: 'I_Nfr.+1) : ftype Tdouble :=
   foldl (fun (x: ftype Tdouble) (j: 'I_Nfr.+1) => range2pi (x + v w j * dt)%F64) (Wave.θ0 (W w ord0)) (take k (ord_enum Nfr.+1)).
 
 Definition dx (w: 'I_Nw) (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
-    wrap (Zconst Tdouble (Z.of_nat i) * (L / Zconst Tdouble (Z.of_nat Nb)) - θw w k)%F64.
+    wrap (Zconst Tdouble (Z.of_nat i) * (L / Zconst Tdouble (Z.of_nat Nb.+1)) - θw w k)%F64.
 
 Definition waveform (w: 'I_Nw)  (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
-    (A w k * Bexp (- (dx w i k)*(dx w i k) / (Zconst Tdouble 2 * (σ w k * σ w k))))%F64.
+    (A w k * Bexp (- ((dx w i k * dx w i k) / (Zconst Tdouble 2 * (σ w k * σ w k)))))%F64.
 
 Definition BGval (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : ftype Tdouble :=
       BG i (Ordinal  (getBG_col (N_range Hfr)  (N_range2 Hbg) k)).
@@ -264,10 +264,10 @@ Definition θw (w: 'I_Nw) (k: 'I_Nfr.+1) : R :=
   foldl (fun (x: R) (j: 'I_Nfr.+1) => range2pi (x + v w j * FT2R dt)) (FT2R (Wave.θ0 (W D w ord0))) (take k (ord_enum Nfr.+1)).
 
 Definition dx (w: 'I_Nw) (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : R :=
-     wrap ( i * (L / IZR Nb) - θw w k).
+     wrap ( i * (L / IZR Nb.+1) - θw w k).
 
 Definition waveform (w: 'I_Nw) (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : R :=
-  (A w k * Rtrigo_def.exp (- (dx w i k * dx w i k) / (2 * (σ w k * σ w k)))).
+  (A w k * Rtrigo_def.exp (- ((dx w i k * dx w i k) / (2 * (σ w k * σ w k))))).
 
 Definition signal  (i: 'I_Nb.+1) (k: 'I_Nfr.+1) : R :=
   \big[Rplus/0]_(w' < 1+Nw) 
@@ -522,34 +522,66 @@ replace         (if eq_op k ord0
  f_equal.
  clear BGc BGci H l.
  unfold Fmodel.A, Fmodel.dx, Fmodel.σ.
+unfold Pmodel.waveform.
+unfold θw_prev.
+unfold Fmodel.θw.
+unfold Fmodel.v.
  set (w := Fmodel.W D a ord0).
  replace (nth a_wave waves (nat_of_ord a)) with w
    by (subst w; unfold Fmodel.W; rewrite mxE; auto).
 clearbody w.
 simpl in w.
-unfold Pmodel.waveform.
-unfold Fmodel.θw.
-unfold θw_prev.
+rewrite inord_val.
 change (eq_op (nat_of_ord k) O) with (eq_op k ord0).
 destruct (eq_op k ord0) eqn:?H.
 -
 fold (is_true (k==ord0)) in H.
 rewrite boolp.eq_opE in H. subst k.
+rewrite take0.
 change (nat_of_ord ord0) with O.
-rewrite mxE.
+rewrite !mxE.
 f_equal.
-f_equal.
-apply ord_inj; rewrite inordK; auto.
-f_equal.
-admit.
 -
-unfold Pmodel.updateθ. rewrite mxE.
+unfold eq_op in H. simpl in H.
+rewrite !mxE.
 f_equal. f_equal.
-apply ord_inj; rewrite inordK; auto.
 f_equal.
-admit.
-
-Admitted.
+f_equal.
+set (u := wrap _).
+set (v := wrap _).
+assert (u=v); [ | congruence].
+subst u v.
+f_equal.
+f_equal.
+set (f := interpolate _ _ _).
+fold dt. fold Nfr.
+set (r := fun _ => _).
+change (range2pi _) with (r (foldl r (Wave.θ0 w) (take (nat_of_ord (@inord Nfr (subn (nat_of_ord k) 1))) (ord_enum (S Nfr))))
+  (inord (subn (nat_of_ord k) 1))).
+clearbody r.
+set z := Wave.θ0 w.
+clearbody z.
+clear - H.
+pose proof (ltn_ord k).
+replace (nat_of_ord (inord (subn (nat_of_ord k) 1))) with (nat_of_ord k - 1)%N; [ | rewrite inordK; lia].
+replace (take (nat_of_ord k) (ord_enum (S Nfr)))
+   with (take (subn (nat_of_ord k) 1) (ord_enum (S Nfr)) ++ [:: inord (k-1)]).
+rewrite foldl_cat; auto.
+rewrite <- (cat_take_drop (k-1) (take k (ord_enum (S Nfr)))).
+f_equal.
+rewrite take_takel. auto. lia.
+replace (take (nat_of_ord k) (ord_enum (S Nfr))) with (take (addn 1 (subn k 1)) (ord_enum (S Nfr)))
+  by (f_equal; lia).
+rewrite -take_drop.
+transitivity  [:: nth ord0 (ord_enum (S Nfr)) (nat_of_ord (@inord Nfr (k-1)))].
+f_equal. rewrite mv_mathcomp.nth_ord_enum'. auto.
+rewrite -(map_nth_iota ord0).
+2: rewrite mv_mathcomp.size_ord_enum; lia.
+simpl.
+f_equal.
+f_equal.
+rewrite inordK; lia.
+Qed.
 
 Lemma OK_iterk_partial: forall k: nat, 
    (k <= Nfr.+1)%N ->
