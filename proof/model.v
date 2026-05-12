@@ -132,39 +132,62 @@ Definition a_wave : Wave.t.
 Proof. apply (Wave.Build_t O (const_mx 0%F64) (const_mx 0%F64)  (const_mx 0%F64)  0%F64 ltac:(rep_lia)).
 Qed.
 
-Lemma col_maj_aux m n : (\sum_(i<n) m = (m * n)%N) * (1 = 1)%N.
+Lemma col_maj_aux1: forall [m n] (ij: 'I_(m.+1*n.+1)), 
+  is_true (nat_of_ord ij mod m.+1 < m.+1)%N.
 Proof.
-intros.
-split; auto.
-clear.
-rewrite (unlock bigop_unlock)
-          /reducebig.
-rewrite  /comp /applybig /= mv_mathcomp.index_ord_enum.
-transitivity (foldr (fun=>[eta addn m]) 0%N (map (fun=> tt) (ord_enum n))).
-symmetry; apply foldr_map.
-assert (size [seq tt | _ <- ord_enum n] = n).
-rewrite size_map mv_mathcomp.size_ord_enum //.
-set (al := [seq tt | _ <- ord_enum n]) in H|-*. clearbody al.
-subst n.
-induction al; simpl. lia.
-rewrite IHal.
-lia.
+intros. pose proof (Nat.mod_upper_bound ij m.+1 ltac:(lia)). lia.
 Qed.
 
-Definition col_maj [m n T] (A: 'M[T]_(m,n)) : 'cV[T]_(m*n) :=
-  castmx (col_maj_aux _ _) (\mxcol_(j<n) col j A).
+Lemma col_maj_aux2: forall [m n] (ij: 'I_(m.+1*n.+1)), 
+  is_true (nat_of_ord ij / m.+1 < n.+1)%N.
+Proof.
+intros.
+pose proof (ltn_ord ij). 
+pose proof Nat.Div0.div_lt_upper_bound ij m.+1 n.+1; lia.
+Qed.
+
+Definition col_maj' [m n T]  (A: 'M[T]_(m.+1,n.+1)) : 'cV[T]_(m.+1*n.+1) :=
+ \matrix_(ij,z) A (Ordinal  (col_maj_aux1 ij)) (Ordinal (col_maj_aux2 ij)).
+
+Lemma col_majE': forall {t} [m n] (X: 'M[t]_(m.+1,n.+1)) (i: 'I_m.+1) (j: 'I_n.+1) (ij: 'I_(m.+1*n.+1)),
+     (nat_of_ord ij = nat_of_ord i + nat_of_ord j * m.+1)%N ->
+  fun_of_matrix (col_maj' X) ij ord0 = fun_of_matrix X i j.
+Proof.
+intros. rewrite mxE.
+assert (Hij := ltn_ord ij).
+assert (Hi := ltn_ord i).
+assert (Hj := ltn_ord j).
+f_equal; clear X; apply ord_inj;
+set c := nat_of_ord ij in H,Hij|-*;
+set i' := nat_of_ord i in H,Hi,Hij|-*;
+set j' := nat_of_ord j in H,Hj,Hij|-*;
+unfold nat_of_ord;
+ clearbody c; subst c; clear ij;
+ clearbody i'; clear i; rename i' into i;
+ clearbody j'; clear j; rename j' into j.
+rewrite /addn /muln Nat.Div0.mod_add; apply Nat.mod_small; lia.
+rewrite /addn /muln Nat.div_add; [ | congruence].
+rewrite Nat.div_small; lia.
+Qed.
+
+Definition col_maj [m n T]  (A: 'M[T]_(m,n)) : 'cV[T]_(m*n).
+destruct m eqn:Hm.
+unfold muln. unfold Init.Nat.mul.
+apply (matrix_of_fun tt). intros i j. destruct i. discriminate i.
+destruct n eqn:Hn.
+subst m n. unfold muln. rewrite Nat.mul_0_r.
+apply (matrix_of_fun tt). intros i j. destruct i. discriminate i.
+apply col_maj'. auto.
+Defined.
 
 Lemma col_majE: forall {t} [m n] (X: 'M[t]_(m,n)) (i: 'I_m) (j: 'I_n) (ij: 'I_(m*n)),
      (nat_of_ord ij = nat_of_ord i + nat_of_ord j * m)%N ->
   fun_of_matrix (col_maj X) ij ord0 = fun_of_matrix X i j.
-Admitted.
-
-Lemma col_majE': forall {t} [m n] (X: 'M[t]_(m,n)) (i: 'I_m) (j: 'I_n)
-    (H : (i + j * m < m * n)%N),
-  fun_of_matrix (col_maj X) (Ordinal H) ord0 = fun_of_matrix X i j.
 Proof.
 intros.
-apply col_majE. simpl. lia.
+destruct n. destruct j. discriminate.
+destruct m. destruct i. discriminate.
+apply col_majE'; auto.
 Qed.
 
 Module Fmodel.
