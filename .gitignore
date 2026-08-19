@@ -52,3 +52,11 @@ time-of-build-after.log
 time-of-build-before.log
 time-of-build-both.log
 time-of-build-pretty.log
+
+# generated figures (regenerate with analyzer/plots/viz_waves.py)
+analyzer/plots/*.png
+
+.DS_Store
+
+# experiment outputs: re-fitted hypothesis sweeps (regenerate with fit_map.jl / fit_variants.jl)
+analyzer/data_refit*/
