@@ -1,0 +1,42 @@
+
+=== run 3423 (phi=0.59)  kernel=student_t  waves=[2, 1, 1] ===
+  baseline eps = 0.06254  (6.254%)
+  MAP: b=1201  total_n=5519  fit on 10001 frames (thin=1) kernel=student_t  waves=[2, 1, 1]
+  MAP: f(warm)=1003977.659506  eps(warm)=0.06254
+  MAP: L-BFGS-B done nit=0 f=1003977.659506 success=False (ABNORMAL: )
+  re-fit   eps = 0.06207  (6.207%)   delta_eps = +0.048 pts
+  waves: [2, 1, 1] -> [2, 1, 1]   preserved=True
+  nu (student-t) = [[20.0, 20.0], [20.0], [20.0]]
+  fit wall = 6.4 s   total = 6.5 s
+
+=== run 3426 (phi=0.85)  kernel=student_t  waves=[2, 2, 1] ===
+  baseline eps = 0.06361  (6.361%)
+  MAP: b=1078  total_n=6523  fit on 10001 frames (thin=1) kernel=student_t  waves=[2, 2, 1]
+  MAP: f(warm)=1004405.864426  eps(warm)=0.06361
+  MAP: L-BFGS-B done nit=0 f=1004405.864426 success=False (ABNORMAL: )
+  re-fit   eps = 0.06315  (6.315%)   delta_eps = +0.046 pts
+  waves: [2, 2, 1] -> [2, 2, 1]   preserved=True
+  nu (student-t) = [[20.0, 20.0], [20.0, 20.0], [20.0]]
+  fit wall = 7.9 s   total = 8.0 s
+
+=== run 3433 (phi=1.46)  kernel=student_t  waves=[1, 1, 1] ===
+  baseline eps = 0.14788  (14.788%)
+  MAP: b=4003  total_n=4515  fit on 10001 frames (thin=1) kernel=student_t  waves=[1, 1, 1]
+  MAP: f(warm)=999472.538135  eps(warm)=0.14788
+  MAP: L-BFGS-B done nit=0 f=999472.538135 success=False (ABNORMAL: )
+  re-fit   eps = 0.14619  (14.619%)   delta_eps = +0.169 pts
+  waves: [1, 1, 1] -> [1, 1, 1]   preserved=True
+  nu (student-t) = [[20.0], [20.0], [20.0]]
+  fit wall = 4.9 s   total = 5.0 s
+
+=== run 3443 (phi=0.81)  kernel=student_t  waves=[2, 1, 1] ===
+  baseline eps = 0.09073  (9.073%)
+  MAP: b=2872  total_n=5519  fit on 10001 frames (thin=1) kernel=student_t  waves=[2, 1, 1]
+  MAP: f(warm)=1004571.015637  eps(warm)=0.09073
+  MAP: L-BFGS-B done nit=0 f=1004571.015637 success=False (ABNORMAL: )
+  re-fit   eps = 0.09017  (9.017%)   delta_eps = +0.056 pts
+  waves: [2, 1, 1] -> [2, 1, 1]   preserved=True
+  nu (student-t) = [[20.0, 20.0], [20.0], [20.0]]
+  fit wall = 6.3 s   total = 6.4 s
+
+appended 4 row(s) to results/maprefit/results_student_t.csv

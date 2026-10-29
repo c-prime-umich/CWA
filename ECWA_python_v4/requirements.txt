@@ -1,0 +1,16 @@
+# ECWA_python_v4 dependencies (Python 3.13)
+#
+#   python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+#
+# numpy/scipy/matplotlib drive the analysis; pandas + openpyxl read the detector
+# properties (.xlsx); Pillow is the gif fallback for --movie (mp4 needs the system
+# `ffmpeg` binary, not a pip package).
+numpy==2.5.4
+scipy==1.18.1
+matplotlib==3.11.2
+pandas==3.0.6
+openpyxl==3.1.5
+Pillow==13.0.0
+
+# test suite
+pytest==9.1.1

@@ -1,0 +1,10 @@
+
+=== run 3423 (phi=0.59)  kernel=split  K=1  waves=[2, 1, 1] ===
+  baseline eps = 0.06254  (6.254%)
+  MAP: b=1201  total_n=9523  fit on 10001 frames (thin=1) kernel=split  waves=[2, 1, 1]
+  MAP: f(warm)=1011928.924539  eps(warm)=0.06254
+  MAP: L-BFGS-B done nit=1500 f=651864.738007 success=False (STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT)
+  re-fit   eps = 0.03918  (3.918%)   delta_eps = +2.336 pts
+  waves: [2, 1, 1] -> [2, 1, 1]   preserved=True
+  fit wall = 313.0 s   total = 313.1 s
+  plots -> /Users/tjwelch/Desktop/APCL/research_projects/project_A/conversion_partition/ECWA_python_v4/results/maprefit/plots/split_K1_3423   (S eps = 3.918% vs re-fit 3.918%)

@@ -1,0 +1,11 @@
+
+=== run 3426 (phi=0.85)  kernel=student_t  K=1  waves=[2, 2, 1] ===
+  baseline eps = 0.06361  (6.361%)
+  MAP: b=1078  total_n=6523  fit on 10001 frames (thin=1) kernel=student_t  waves=[2, 2, 1]
+  MAP: f(warm)=993648.036025  eps(warm)=0.06361
+  MAP: L-BFGS-B done nit=0 f=993648.036025 success=False (ABNORMAL: )
+  re-fit   eps = 0.06248  (6.248%)   delta_eps = +0.113 pts
+  waves: [2, 2, 1] -> [2, 2, 1]   preserved=True
+  nu (student-t) = [[8.0, 8.0], [8.0, 8.0], [8.0]]
+  fit wall = 10.7 s   total = 10.9 s
+  plots -> /Users/tjwelch/Desktop/APCL/research_projects/project_A/conversion_partition/ECWA_python_v4/results/maprefit/plots/student_t_K1_3426   (S eps = 6.248% vs re-fit 6.248%)

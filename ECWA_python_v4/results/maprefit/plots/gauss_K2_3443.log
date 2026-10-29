@@ -1,0 +1,14 @@
+
+=== run 3443 (phi=0.81)  kernel=gauss  K=2  waves=[2, 1, 1] ===
+  baseline eps = 0.09073  (9.073%)
+  MAP: b=2872  total_n=5515  fit on 10001 frames (thin=1) kernel=gauss  waves=[2, 1, 1]
+  MAP: f(warm)=1010794.623617  eps(warm)=0.09073
+  MAP: L-BFGS-B done nit=1500 f=690169.704398 success=False (STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT)
+  [stage 1] gauss re-fit eps = 0.06162
+  MAP: b=1951  total_n=9523  fit on 10001 frames (thin=1) kernel=gauss  waves=[2, 1, 1]
+  MAP: f(warm)=1082081.533589  eps(warm)=0.06162
+  MAP: L-BFGS-B done nit=1500 f=991948.995613 success=False (STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT)
+  re-fit   eps = 0.06002  (6.002%)   delta_eps = +3.071 pts
+  waves: [2, 1, 1] -> [2, 1, 1]   preserved=True
+  fit wall = 470.8 s   total = 470.9 s
+  plots -> /Users/tjwelch/Desktop/APCL/research_projects/project_A/conversion_partition/ECWA_python_v4/results/maprefit/plots/gauss_K2_3443   (S eps = 6.002% vs re-fit 6.002%)
